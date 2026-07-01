@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: azure-devops-exporter
+data:
+  AZURE_DEVOPS_ORGANIZATION: "my-org"
+  AZURE_DEVOPS_PROJECTS: "proj-a,proj-b"
+  AZURE_DEVOPS_API_URL: "https://dev.azure.com"
+  EXPORTER_PORT: "8080"
+  SCRAPE_INTERVAL_SECONDS: "300"
+  LOG_LEVEL: "info"

@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: azure-devops-exporter
+  labels:
+    app: azure-devops-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: azure-devops-exporter
+  template:
+    metadata:
+      labels:
+        app: azure-devops-exporter
+    spec:
+      containers:
+        - name: azure-devops-exporter
+          image: azure-devops-exporter:latest
+          ports:
+            - name: metrics
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: azure-devops-exporter
+            - secretRef:
+                name: azure-devops-exporter
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: metrics
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: metrics
+            initialDelaySeconds: 5
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
