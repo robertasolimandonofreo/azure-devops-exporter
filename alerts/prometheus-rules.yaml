@@ -91,3 +91,41 @@ spec:
               Project {{ $labels.project }} has {{ $value }} {{ $labels.work_item_type }}
               work item(s) in state {{ $labels.state }} with no changes in more than 14
               days.
+
+        - alert: AzureDevOpsPullRequestsWithConflicts
+          expr: azure_devops_repo_pull_requests_with_conflicts_total > 0
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: Pull requests with merge conflicts
+            description: >-
+              Repository {{ $labels.repository }} in project {{ $labels.project }} has
+              {{ $value }} active pull request(s) with merge conflicts, blocking them from
+              being merged.
+
+        - alert: AzureDevOpsPipelineRunStuck
+          expr: azure_devops_pipeline_runs_in_progress > 0
+          for: 2h
+          labels:
+            severity: warning
+          annotations:
+            summary: Pipeline run has been in progress for an unusually long time
+            description: >-
+              Pipeline {{ $labels.pipeline }} in project {{ $labels.project }} has had a run
+              in progress for over 2 hours — likely hung rather than genuinely still running.
+              Only catches runs queued within the last 24 hours; see README.
+
+        # Severity string values (e.g. "1 - Critical") are whatever the process template
+        # defines, so this regex is a starting point — adjust it to match your org's naming
+        # before relying on it.
+        - alert: AzureDevOpsCriticalBugsOpen
+          expr: azure_devops_boards_bugs_by_severity{severity=~"1.*"} > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Critical-severity bugs open
+            description: >-
+              Project {{ $labels.project }} has {{ $value }} bug(s) at severity
+              "{{ $labels.severity }}".

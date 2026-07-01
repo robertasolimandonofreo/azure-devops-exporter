@@ -426,28 +426,50 @@ scrape_configs:
 ## Alerts
 
 `alerts/prometheus-rules.yaml` is a `PrometheusRule` (requires Prometheus
-Operator — `kubectl apply -f alerts/prometheus-rules.yaml`). Only
+Operator — `kubectl apply -f alerts/prometheus-rules.yaml`), with 10 rules
+covering exporter health, Pipelines, Releases, Repos and Boards. Only
 `AzureDevOpsExporterScrapeFailing` uses `increase()`, because
 `azure_devops_exporter_scrape_errors_total` is the one metric here that's a
 real Prometheus counter; every other alert compares a gauge directly
 (`> 0`), since the rest of this exporter's metrics are recomputed snapshots
 per scrape, not monotonic counters — see the "Metrics" sections above for
-which window each one uses.
+which window each one uses. Two rules are worth knowing the limits of before
+you rely on them: `AzureDevOpsPipelineRunStuck` only catches runs queued
+within the last 24 hours (the same window `runs_in_progress` itself is
+bound by), and `AzureDevOpsCriticalBugsOpen` matches severity by regex
+(`severity=~"1.*"`) against whatever string your process template actually
+uses — check it matches your org's naming before trusting it. This set
+isn't exhaustive — it's the alerts that are unambiguously actionable at a
+fixed threshold; plenty of the metrics below are better suited to a
+dashboard panel than a default alert (e.g. `deployments_not_deployed` is
+often expected behavior, not a problem, so it isn't alerted on).
 
 ## Grafana dashboard
 
-`dashboards/grafana-dashboard.json` covers all four collectors plus a DORA
-overview row (Deployment Frequency and Change Failure Rate for both
-Pipelines and Releases, Lead Time for Changes from PR and work item lead
-time). Time to Restore Service is intentionally left unimplemented — Azure
-DevOps pipelines/releases have no first-class "incident" concept to compute
-it from, and approximating it from failed→succeeded run gaps was judged too
-unreliable to ship.
+`dashboards/grafana-dashboard.json` covers all four collectors (45 panels)
+plus a DORA overview row: Deployment Frequency and Change Failure Rate for
+both Pipelines and Releases, and Lead Time for Changes computed the DORA
+way — commit to production (`azure_devops_release_lead_time_for_changes_avg_days`),
+not the cheaper PR-creation-to-merge proxy. That PR-based number is still
+available, just relocated to its own panel in the Repos row, since it's a
+useful signal on its own (how long PRs take to merge) even though it isn't
+DORA's Lead Time for Changes. Time to Restore Service is intentionally left
+unimplemented, with a panel explaining why: Azure DevOps pipelines/releases
+have no first-class "incident" concept to compute it from, and
+approximating it from failed→succeeded run gaps was judged too unreliable
+to ship.
+
+Also included: draft/conflicting/reviewer-less PR counts and repo size in
+the Repos row, in-progress runs and queue time in Pipelines (with a text
+panel explaining why `runs_by_branch_total` — the highest-cardinality
+metric in this exporter — is deliberately *not* graphed by default),
+not-deployed counts and the full lead-time-for-changes percentile spread in
+Releases, and priority/severity/story-points breakdowns in Boards.
 
 Import it via Grafana's dashboard import (JSON upload or paste); it prompts
 for a Prometheus datasource on import (`DS_PROMETHEUS` input) and exposes
 `organization`/`project` template variables for filtering. Panels reading
-`_last_run_timestamp` / `_last_deployment_timestamp` will simply omit a
-series when a pipeline or environment has had no activity within that
-metric's window (24h / 30d) — that's the same "absence means no recent
-data" behavior documented for those metrics above, not a dashboard bug.
+`_last_run_timestamp` / `_last_deployment_timestamp` / lead-time-for-changes
+will simply omit a series when there's no data within that metric's window
+(24h / 30d) — that's the same "absence means no recent data" behavior
+documented for those metrics above, not a dashboard bug.

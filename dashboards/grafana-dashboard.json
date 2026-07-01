@@ -12,12 +12,18 @@
   "title": "Azure DevOps Exporter",
   "uid": "azure-devops-exporter",
   "description": "Repos, Boards, Pipelines and Releases metrics from azure-devops-exporter, with a DORA-oriented overview row.",
-  "tags": ["azure-devops", "dora"],
+  "tags": [
+    "azure-devops",
+    "dora"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": true,
-  "time": { "from": "now-7d", "to": "now" },
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
   "refresh": "5m",
   "templating": {
     "list": [
@@ -32,23 +38,35 @@
         "name": "organization",
         "type": "query",
         "label": "Organization",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
         "query": "label_values(azure_devops_repos_total, organization)",
         "refresh": 2,
         "multi": true,
         "includeAll": true,
-        "current": { "text": "All", "value": "$__all" }
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       },
       {
         "name": "project",
         "type": "query",
         "label": "Project",
-        "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
         "query": "label_values(azure_devops_repos_total{organization=~\"$organization\"}, project)",
         "refresh": 2,
         "multi": true,
         "includeAll": true,
-        "current": { "text": "All", "value": "$__all" }
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
       }
     ]
   },
@@ -57,30 +75,65 @@
       "id": 1,
       "type": "row",
       "title": "DORA overview",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "collapsed": false,
       "panels": []
     },
     {
       "id": 2,
       "type": "stat",
-      "title": "Deployment frequency — pipeline runs succeeded (24h)",
+      "title": "Deployment frequency \u2014 pipeline runs succeeded (24h)",
       "description": "Sum of azure_devops_pipeline_runs_succeeded across all pipelines. Gauge recomputed every scrape over a rolling 24h window, not a cumulative counter.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 1 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
       "targets": [
-        { "expr": "sum(azure_devops_pipeline_runs_succeeded{organization=~\"$organization\", project=~\"$project\"})", "legendFormat": "succeeded (24h)" }
+        {
+          "expr": "sum(azure_devops_pipeline_runs_succeeded{organization=~\"$organization\", project=~\"$project\"})",
+          "legendFormat": "succeeded (24h)"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
     },
     {
       "id": 3,
       "type": "stat",
-      "title": "Change failure rate — pipelines (24h)",
+      "title": "Change failure rate \u2014 pipelines (24h)",
       "description": "failed / (succeeded + failed) over the same 24h window used by the run-count metrics.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 1 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
       "targets": [
         {
           "expr": "sum(azure_devops_pipeline_runs_failed{organization=~\"$organization\", project=~\"$project\"}) / clamp_min(sum(azure_devops_pipeline_runs_succeeded{organization=~\"$organization\", project=~\"$project\"}) + sum(azure_devops_pipeline_runs_failed{organization=~\"$organization\", project=~\"$project\"}), 1)",
@@ -90,11 +143,23 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "yellow", "value": 0.15 },
-            { "color": "red", "value": 0.3 }
-          ] }
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.15
+              },
+              {
+                "color": "red",
+                "value": 0.3
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -102,22 +167,46 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Deployment frequency — release deployments succeeded (30d)",
+      "title": "Deployment frequency \u2014 release deployments succeeded (30d)",
       "description": "Sum of azure_devops_release_deployments_succeeded across all release definitions/environments, over the collector's 30-day window.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 1 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
       "targets": [
-        { "expr": "sum(azure_devops_release_deployments_succeeded{organization=~\"$organization\", project=~\"$project\"})", "legendFormat": "succeeded (30d)" }
+        {
+          "expr": "sum(azure_devops_release_deployments_succeeded{organization=~\"$organization\", project=~\"$project\"})",
+          "legendFormat": "succeeded (30d)"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
     },
     {
       "id": 5,
       "type": "stat",
-      "title": "Change failure rate — releases (30d)",
+      "title": "Change failure rate \u2014 releases (30d)",
       "description": "failed / (succeeded + failed) over the collector's 30-day window.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 1 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
       "targets": [
         {
           "expr": "sum(azure_devops_release_deployments_failed{organization=~\"$organization\", project=~\"$project\"}) / clamp_min(sum(azure_devops_release_deployments_succeeded{organization=~\"$organization\", project=~\"$project\"}) + sum(azure_devops_release_deployments_failed{organization=~\"$organization\", project=~\"$project\"}), 1)",
@@ -127,11 +216,23 @@
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
-          "thresholds": { "mode": "absolute", "steps": [
-            { "color": "green", "value": null },
-            { "color": "yellow", "value": 0.15 },
-            { "color": "red", "value": 0.3 }
-          ] }
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.15
+              },
+              {
+                "color": "red",
+                "value": 0.3
+              }
+            ]
+          }
         },
         "overrides": []
       }
@@ -139,59 +240,144 @@
     {
       "id": 6,
       "type": "stat",
-      "title": "Lead time for changes — PRs (avg days)",
-      "description": "Average of azure_devops_repo_pr_lead_time_avg_days across repositories (creation to merge).",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 7 },
+      "title": "Lead time for changes \u2014 commit to production (avg days)",
+      "description": "Average of azure_devops_release_lead_time_for_changes_avg_days across release definitions/environments \u2014 DORA's actual Lead Time for Changes (commit to deployment), traced through the release's Build artifact. See README for what's excluded (non-Build artifacts, resolution failures) and the in-memory cache that makes this affordable.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 7
+      },
       "targets": [
-        { "expr": "avg(azure_devops_repo_pr_lead_time_avg_days{organization=~\"$organization\", project=~\"$project\"})", "legendFormat": "avg lead time (days)" }
+        {
+          "expr": "avg(azure_devops_release_lead_time_for_changes_avg_days{organization=~\"$organization\", project=~\"$project\"})",
+          "legendFormat": "avg lead time (days)"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "d", "decimals": 1 }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "decimals": 1
+        },
+        "overrides": []
+      }
     },
     {
       "id": 7,
       "type": "stat",
-      "title": "Lead time for changes — work items (avg days)",
-      "description": "Average of azure_devops_boards_lead_time_avg_days across work item types/areas (creation to close). Not part of DORA's PR-based Lead Time for Changes, but a useful complementary view for work planned in Boards.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 7 },
+      "title": "Lead time for changes \u2014 work items (avg days)",
+      "description": "Average of azure_devops_boards_lead_time_avg_days across work item types/areas (creation to close). Complementary to the commit\u2192production panel to the left, not a substitute for it \u2014 this measures planning/work lead time, not code lead time. The PR-based creation\u2192merge proxy formerly shown here is still available per-repository in the Repos row below.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 7
+      },
       "targets": [
-        { "expr": "avg(azure_devops_boards_lead_time_avg_days{organization=~\"$organization\", project=~\"$project\"})", "legendFormat": "avg lead time (days)" }
+        {
+          "expr": "avg(azure_devops_boards_lead_time_avg_days{organization=~\"$organization\", project=~\"$project\"})",
+          "legendFormat": "avg lead time (days)"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "d", "decimals": 1 }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "decimals": 1
+        },
+        "overrides": []
+      }
     },
     {
       "id": 8,
       "type": "text",
       "title": "Time to Restore Service",
-      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 7 },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 7
+      },
       "options": {
         "mode": "markdown",
-        "content": "**Not implemented.** DORA's fourth metric needs an incident/rollback timeline the exporter doesn't have — Azure DevOps pipelines and releases don't have a first-class \"incident\" concept. Approximating it from failed→succeeded run gaps was considered too unreliable to ship as a metric."
+        "content": "**Not implemented.** DORA's fourth metric needs an incident/rollback timeline the exporter doesn't have \u2014 Azure DevOps pipelines and releases don't have a first-class \"incident\" concept. Approximating it from failed\u2192succeeded run gaps was considered too unreliable to ship as a metric."
       }
     },
-
-    { "id": 10, "type": "row", "title": "Repos", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 }, "collapsed": false, "panels": [] },
+    {
+      "id": 10,
+      "type": "row",
+      "title": "Repos",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      },
+      "collapsed": false,
+      "panels": []
+    },
     {
       "id": 11,
       "type": "stat",
       "title": "Repositories",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 14 },
-      "targets": [{ "expr": "sum(azure_devops_repos_total{organization=~\"$organization\", project=~\"$project\"})" }]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "expr": "sum(azure_devops_repos_total{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ]
     },
     {
       "id": 12,
       "type": "stat",
       "title": "Stale pull requests (>14d open)",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 14 },
-      "targets": [{ "expr": "sum(azure_devops_repo_stale_pull_requests_total{organization=~\"$organization\", project=~\"$project\"})" }],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 14
+      },
+      "targets": [
+        {
+          "expr": "sum(azure_devops_repo_stale_pull_requests_total{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ],
       "fieldConfig": {
-        "defaults": { "thresholds": { "mode": "absolute", "steps": [
-          { "color": "green", "value": null },
-          { "color": "red", "value": 1 }
-        ] } },
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
         "overrides": []
       }
     },
@@ -199,86 +385,355 @@
       "id": 13,
       "type": "timeseries",
       "title": "Pull requests by status",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 14
+      },
       "targets": [
-        { "expr": "sum(azure_devops_repo_pull_requests_active{organization=~\"$organization\", project=~\"$project\"}) by (repository)", "legendFormat": "{{repository}} active" },
-        { "expr": "sum(azure_devops_repo_pull_requests_completed{organization=~\"$organization\", project=~\"$project\"}) by (repository)", "legendFormat": "{{repository}} completed" },
-        { "expr": "sum(azure_devops_repo_pull_requests_abandoned{organization=~\"$organization\", project=~\"$project\"}) by (repository)", "legendFormat": "{{repository}} abandoned" }
+        {
+          "expr": "sum(azure_devops_repo_pull_requests_active{organization=~\"$organization\", project=~\"$project\"}) by (repository)",
+          "legendFormat": "{{repository}} active"
+        },
+        {
+          "expr": "sum(azure_devops_repo_pull_requests_completed{organization=~\"$organization\", project=~\"$project\"}) by (repository)",
+          "legendFormat": "{{repository}} completed"
+        },
+        {
+          "expr": "sum(azure_devops_repo_pull_requests_abandoned{organization=~\"$organization\", project=~\"$project\"}) by (repository)",
+          "legendFormat": "{{repository}} abandoned"
+        }
       ]
     },
     {
       "id": 14,
       "type": "timeseries",
       "title": "Commits pushed (last 24h) by repository",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 14
+      },
       "targets": [
-        { "expr": "azure_devops_repo_commits_total{organization=~\"$organization\", project=~\"$project\"}", "legendFormat": "{{repository}}" }
+        {
+          "expr": "azure_devops_repo_commits_total{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{repository}}"
+        }
       ]
     },
     {
       "id": 15,
       "type": "bargauge",
       "title": "Branches by repository",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 19 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 22
+      },
       "targets": [
-        { "expr": "azure_devops_repo_branches_total{organization=~\"$organization\", project=~\"$project\"}", "legendFormat": "{{repository}}" }
+        {
+          "expr": "azure_devops_repo_branches_total{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{repository}}"
+        }
       ]
     },
     {
       "id": 16,
       "type": "timeseries",
       "title": "PR lead time (avg/p50/p90/max days) by repository",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 22 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 22
+      },
       "targets": [
-        { "expr": "azure_devops_repo_pr_lead_time_avg_days{organization=~\"$organization\", project=~\"$project\"}", "legendFormat": "{{repository}} avg" },
-        { "expr": "azure_devops_repo_pr_lead_time_p90_days{organization=~\"$organization\", project=~\"$project\"}", "legendFormat": "{{repository}} p90" }
+        {
+          "expr": "azure_devops_repo_pr_lead_time_avg_days{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{repository}} avg"
+        },
+        {
+          "expr": "azure_devops_repo_pr_lead_time_p90_days{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{repository}} p90"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "d" }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d"
+        },
+        "overrides": []
+      }
     },
-
-    { "id": 20, "type": "row", "title": "Pipelines", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 }, "collapsed": false, "panels": [] },
+    {
+      "type": "stat",
+      "title": "Draft pull requests",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_repo_draft_pull_requests_total{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ],
+      "id": 145,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 30
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Pull requests with conflicts",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_repo_pull_requests_with_conflicts_total{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "id": 146,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 30
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Pull requests without a reviewer",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_repo_pull_requests_without_reviewer_total{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ],
+      "id": 147,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 30
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Pull requests pending approval",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_repo_pull_requests_pending_approval_total{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ],
+      "id": 148,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 30
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Repository size",
+      "targets": [
+        {
+          "expr": "azure_devops_repo_size_bytes{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{repository}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "id": 149,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 35
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Commits by author (last 24h)",
+      "description": "Git author identity, which can differ from the Azure DevOps user who opened the PR.",
+      "targets": [
+        {
+          "expr": "azure_devops_repo_commits_by_author_total{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{repository}} / {{author}}"
+        }
+      ],
+      "id": 150,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 35
+      }
+    },
+    {
+      "id": 20,
+      "type": "row",
+      "title": "Pipelines",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      },
+      "collapsed": false,
+      "panels": []
+    },
     {
       "id": 21,
       "type": "stat",
       "title": "Pipeline definitions",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 31 },
-      "targets": [{ "expr": "sum(azure_devops_pipelines_total{organization=~\"$organization\", project=~\"$project\"})" }]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 42
+      },
+      "targets": [
+        {
+          "expr": "sum(azure_devops_pipelines_total{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ]
     },
     {
       "id": 22,
       "type": "timeseries",
       "title": "Runs by result (24h window) per pipeline",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 10, "x": 4, "y": 31 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 4,
+        "y": 42
+      },
       "targets": [
-        { "expr": "azure_devops_pipeline_runs_succeeded{organization=~\"$organization\", project=~\"$project\"}", "legendFormat": "{{pipeline}} succeeded" },
-        { "expr": "azure_devops_pipeline_runs_failed{organization=~\"$organization\", project=~\"$project\"}", "legendFormat": "{{pipeline}} failed" },
-        { "expr": "azure_devops_pipeline_runs_canceled{organization=~\"$organization\", project=~\"$project\"}", "legendFormat": "{{pipeline}} canceled" }
+        {
+          "expr": "azure_devops_pipeline_runs_succeeded{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{pipeline}} succeeded"
+        },
+        {
+          "expr": "azure_devops_pipeline_runs_failed{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{pipeline}} failed"
+        },
+        {
+          "expr": "azure_devops_pipeline_runs_canceled{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{pipeline}} canceled"
+        }
       ]
     },
     {
       "id": 23,
       "type": "timeseries",
       "title": "Average run duration by pipeline",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 31 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 14,
+        "y": 42
+      },
       "targets": [
-        { "expr": "azure_devops_pipeline_run_duration_seconds{organization=~\"$organization\", project=~\"$project\"}", "legendFormat": "{{pipeline}}" }
+        {
+          "expr": "azure_devops_pipeline_run_duration_seconds{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{pipeline}}"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
     },
     {
       "id": 24,
       "type": "table",
       "title": "Pipelines with no recent run (age since last run)",
-      "description": "Sorted so the longest-idle pipelines float to the top — useful for spotting pipelines that quietly stopped running.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 39 },
+      "description": "Sorted so the longest-idle pipelines float to the top \u2014 useful for spotting pipelines that quietly stopped running.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 50
+      },
       "targets": [
         {
           "expr": "(time() - azure_devops_pipeline_last_run_timestamp{organization=~\"$organization\", project=~\"$project\"}) / 86400",
@@ -287,47 +742,183 @@
           "instant": true
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "d", "custom": { "displayMode": "color-background" } }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "custom": {
+            "displayMode": "color-background"
+          }
+        },
+        "overrides": []
+      }
     },
-
-    { "id": 30, "type": "row", "title": "Releases", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 46 }, "collapsed": false, "panels": [] },
+    {
+      "type": "stat",
+      "title": "Runs currently in progress",
+      "description": "Only counts runs queued within the same 24h window used elsewhere in this row \u2014 see README.",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_pipeline_runs_in_progress{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ],
+      "id": 151,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 57
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Average queue time by pipeline",
+      "targets": [
+        {
+          "expr": "azure_devops_pipeline_queue_time_seconds{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{pipeline}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "id": 152,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 10,
+        "x": 4,
+        "y": 57
+      }
+    },
+    {
+      "type": "text",
+      "title": "Runs by branch",
+      "id": 153,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 10,
+        "x": 14,
+        "y": 57
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "`azure_devops_pipeline_runs_by_branch_total` is intentionally not graphed here by default \u2014 it's the highest-cardinality metric in this exporter (unbounded by branch count if CI runs on every feature branch). Query it directly if you need it, e.g. filtered to a specific branch:\n\n```\nazure_devops_pipeline_runs_by_branch_total{branch=\"main\"}\n```"
+      }
+    },
+    {
+      "id": 30,
+      "type": "row",
+      "title": "Releases",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 64
+      },
+      "collapsed": false,
+      "panels": []
+    },
     {
       "id": 31,
       "type": "stat",
       "title": "Release definitions",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 47 },
-      "targets": [{ "expr": "sum(azure_devops_releases_total{organization=~\"$organization\", project=~\"$project\"})" }]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 65
+      },
+      "targets": [
+        {
+          "expr": "sum(azure_devops_releases_total{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ]
     },
     {
       "id": 32,
       "type": "timeseries",
       "title": "Deployments by environment (30d window)",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 10, "x": 4, "y": 47 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 4,
+        "y": 65
+      },
       "targets": [
-        { "expr": "azure_devops_release_deployments_succeeded{organization=~\"$organization\", project=~\"$project\"}", "legendFormat": "{{release_definition}}/{{environment}} succeeded" },
-        { "expr": "azure_devops_release_deployments_failed{organization=~\"$organization\", project=~\"$project\"}", "legendFormat": "{{release_definition}}/{{environment}} failed" }
+        {
+          "expr": "azure_devops_release_deployments_succeeded{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{release_definition}}/{{environment}} succeeded"
+        },
+        {
+          "expr": "azure_devops_release_deployments_failed{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{release_definition}}/{{environment}} failed"
+        }
       ]
     },
     {
       "id": 33,
       "type": "timeseries",
       "title": "Average deployment duration by environment",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 47 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 10,
+        "x": 14,
+        "y": 65
+      },
       "targets": [
-        { "expr": "azure_devops_release_deployment_duration_seconds{organization=~\"$organization\", project=~\"$project\"}", "legendFormat": "{{release_definition}}/{{environment}}" }
+        {
+          "expr": "azure_devops_release_deployment_duration_seconds{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{release_definition}}/{{environment}}"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
     },
     {
       "id": 34,
       "type": "table",
       "title": "Last deployment age by environment",
       "description": "Absent from this table means no deployment in the collector's 30-day window, not necessarily that the environment is unused.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 55 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 73
+      },
       "targets": [
         {
           "expr": "(time() - azure_devops_release_last_deployment_timestamp{organization=~\"$organization\", project=~\"$project\"}) / 86400",
@@ -336,30 +927,137 @@
           "instant": true
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "d" }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d"
+        },
+        "overrides": []
+      }
     },
-
-    { "id": 40, "type": "row", "title": "Boards", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 62 }, "collapsed": false, "panels": [] },
+    {
+      "type": "stat",
+      "title": "Deployments not deployed (30d)",
+      "description": "Skipped or never-triggered deployments \u2014 not the same as \"pending approval\". See README.",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_release_deployments_not_deployed{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ],
+      "id": 154,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 80
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Lead time for changes (p50/p90/max days) by release/environment",
+      "targets": [
+        {
+          "expr": "azure_devops_release_lead_time_for_changes_p50_days{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{release_definition}}/{{environment}} p50"
+        },
+        {
+          "expr": "azure_devops_release_lead_time_for_changes_p90_days{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{release_definition}}/{{environment}} p90"
+        },
+        {
+          "expr": "azure_devops_release_lead_time_for_changes_max_days{organization=~\"$organization\", project=~\"$project\"}",
+          "legendFormat": "{{release_definition}}/{{environment}} max"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d"
+        },
+        "overrides": []
+      },
+      "id": 155,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 20,
+        "x": 4,
+        "y": 80
+      }
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "Boards",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 87
+      },
+      "collapsed": false,
+      "panels": []
+    },
     {
       "id": 41,
       "type": "stat",
       "title": "Work items",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 63 },
-      "targets": [{ "expr": "sum(azure_devops_boards_work_items_total{organization=~\"$organization\", project=~\"$project\"})" }]
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 88
+      },
+      "targets": [
+        {
+          "expr": "sum(azure_devops_boards_work_items_total{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ]
     },
     {
       "id": 42,
       "type": "stat",
       "title": "Stale work items (>14d unchanged)",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 63 },
-      "targets": [{ "expr": "sum(azure_devops_boards_work_items_stale_total{organization=~\"$organization\", project=~\"$project\"})" }],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 88
+      },
+      "targets": [
+        {
+          "expr": "sum(azure_devops_boards_work_items_stale_total{organization=~\"$organization\", project=~\"$project\"})"
+        }
+      ],
       "fieldConfig": {
-        "defaults": { "thresholds": { "mode": "absolute", "steps": [
-          { "color": "green", "value": null },
-          { "color": "red", "value": 1 }
-        ] } },
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
         "overrides": []
       }
     },
@@ -367,33 +1065,143 @@
       "id": 43,
       "type": "bargauge",
       "title": "Work items by type and state",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 63 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 88
+      },
       "targets": [
-        { "expr": "sum(azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\"}) by (work_item_type, state)", "legendFormat": "{{work_item_type}} / {{state}}" }
+        {
+          "expr": "sum(azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\"}) by (work_item_type, state)",
+          "legendFormat": "{{work_item_type}} / {{state}}"
+        }
       ]
     },
     {
       "id": 44,
       "type": "bargauge",
       "title": "Work items by assignee",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 63 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 88
+      },
       "targets": [
-        { "expr": "sum(azure_devops_boards_work_items_by_assignee{organization=~\"$organization\", project=~\"$project\"}) by (assigned_to)", "legendFormat": "{{assigned_to}}" }
+        {
+          "expr": "sum(azure_devops_boards_work_items_by_assignee{organization=~\"$organization\", project=~\"$project\"}) by (assigned_to)",
+          "legendFormat": "{{assigned_to}}"
+        }
       ]
     },
     {
       "id": 45,
       "type": "timeseries",
       "title": "Work item lead time (avg/p90 days) by type",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 71 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 96
+      },
       "targets": [
-        { "expr": "avg(azure_devops_boards_lead_time_avg_days{organization=~\"$organization\", project=~\"$project\"}) by (work_item_type)", "legendFormat": "{{work_item_type}} avg" },
-        { "expr": "avg(azure_devops_boards_lead_time_p90_days{organization=~\"$organization\", project=~\"$project\"}) by (work_item_type)", "legendFormat": "{{work_item_type}} p90" }
+        {
+          "expr": "avg(azure_devops_boards_lead_time_avg_days{organization=~\"$organization\", project=~\"$project\"}) by (work_item_type)",
+          "legendFormat": "{{work_item_type}} avg"
+        },
+        {
+          "expr": "avg(azure_devops_boards_lead_time_p90_days{organization=~\"$organization\", project=~\"$project\"}) by (work_item_type)",
+          "legendFormat": "{{work_item_type}} p90"
+        }
       ],
-      "fieldConfig": { "defaults": { "unit": "d" }, "overrides": [] }
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Work items by priority",
+      "description": "Items with priority unset are excluded.",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_boards_work_items_by_priority{organization=~\"$organization\", project=~\"$project\"}) by (work_item_type, priority)",
+          "legendFormat": "{{work_item_type}} P{{priority}}"
+        }
+      ],
+      "id": 156,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 104
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Bugs by severity",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_boards_bugs_by_severity{organization=~\"$organization\", project=~\"$project\"}) by (severity)",
+          "legendFormat": "{{severity}}"
+        }
+      ],
+      "id": 157,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 104
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Story points & effort by state",
+      "description": "Which field (if either) is populated is process-template-dependent \u2014 see README.",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_boards_story_points_total{organization=~\"$organization\", project=~\"$project\"}) by (work_item_type, state)",
+          "legendFormat": "{{work_item_type}}/{{state}} points"
+        },
+        {
+          "expr": "sum(azure_devops_boards_effort_total{organization=~\"$organization\", project=~\"$project\"}) by (work_item_type, state)",
+          "legendFormat": "{{work_item_type}}/{{state}} effort"
+        }
+      ],
+      "id": 158,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 104
+      }
     }
   ]
 }
