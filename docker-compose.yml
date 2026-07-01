@@ -1,0 +1,13 @@
+services:
+  azure-devops-exporter:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      AZURE_DEVOPS_ORGANIZATION: ${AZURE_DEVOPS_ORGANIZATION}
+      AZURE_DEVOPS_PROJECTS: ${AZURE_DEVOPS_PROJECTS}
+      AZURE_DEVOPS_TOKEN: ${AZURE_DEVOPS_TOKEN}
+      AZURE_DEVOPS_API_URL: ${AZURE_DEVOPS_API_URL:-https://dev.azure.com}
+      EXPORTER_PORT: ${EXPORTER_PORT:-8080}
+      SCRAPE_INTERVAL_SECONDS: ${SCRAPE_INTERVAL_SECONDS:-300}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
