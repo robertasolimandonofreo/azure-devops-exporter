@@ -267,6 +267,10 @@ azure_devops_release_deployments_failed{organization,project,release_definition,
 azure_devops_release_deployment_duration_seconds{organization,project,release_definition,environment}
 azure_devops_release_last_deployment_timestamp{organization,project,release_definition,environment}
 azure_devops_release_deployments_not_deployed{organization,project,release_definition,environment}
+azure_devops_release_lead_time_for_changes_avg_days{organization,project,release_definition,environment}
+azure_devops_release_lead_time_for_changes_p50_days{organization,project,release_definition,environment}
+azure_devops_release_lead_time_for_changes_p90_days{organization,project,release_definition,environment}
+azure_devops_release_lead_time_for_changes_max_days{organization,project,release_definition,environment}
 ```
 
 This collector targets **classic Release Management** (release definitions
@@ -297,6 +301,50 @@ for deployments that were skipped or never triggered (e.g. unmet conditions),
 not specifically ones sitting in front of a release gate. A dedicated
 "pending approval" signal would need the separate Release Approvals API,
 which this collector doesn't call.
+
+### Lead Time for Changes
+
+`lead_time_for_changes_{avg,p50,p90,max}_days` is DORA's actual "commit to
+production" Lead Time for Changes — different from (and more expensive than)
+the PR-based `azure_devops_repo_pr_lead_time_*` metrics, which only measure
+PR creation to merge. For each **successful** deployment in the 30-day
+window, the collector:
+
+1. Fetches the parent Release (`GetRelease`) to find its `Build`-type
+   artifact and the build ID that produced it.
+2. Fetches that build's changes (`GetBuildChanges`) — the commits included in
+   it, each with a timestamp, relative to the previous build on the branch.
+3. For every one of those commits, records `deployment.completedOn -
+   commit.timestamp` as one lead time sample, aggregated the same way as
+   every other lead time metric in this project (nearest-rank percentiles,
+   avg/p50/p90/max per `release_definition`/`environment`).
+
+**Cost and the reason for the cache.** Steps 1–2 are two extra API calls
+*per deployment*, and unlike run/deployment counts, this isn't optional
+aggregation — there's no way to bulk-resolve it. Naively doing this on every
+scrape would mean re-fetching the same immutable data for deployments from
+weeks ago, over and over, every `SCRAPE_INTERVAL_SECONDS`. A project with 10
+release definitions × 3 environments deploying weekly (~120 deployments in a
+30-day window) would cost ~240 extra calls *per scrape* — at the default
+5-minute interval, on the order of tens of thousands of calls a day, almost
+all of them redundant. To avoid that, resolved commit timestamps are cached
+in memory per release ID (`releaseChangesCache` in
+`internal/collectors/releases.go`) — a release's artifacts never change
+once created, so each release is resolved at most once, no matter how many
+scrapes see its deployment. The cache is swept of entries older than the
+30-day release window on every `CollectReleases` call, since a deployment
+that's aged out of the window won't be looked up again; it is **not**
+persisted across process restarts (in-memory only — a restart re-pays the
+resolution cost for whatever's still in the 30-day window at that point).
+
+**What's silently excluded, not errored on:** releases with no `Build`
+artifact (container-image artifacts, manually-triggered releases with
+nothing attached) contribute no lead time samples. So does a deployment
+where `GetRelease` or `GetBuildChanges` fails for any reason (permissions,
+a deleted release, a transient API error) — this metric is deliberately
+tolerant of per-deployment failures rather than aborting the whole
+`CollectReleases` call over what's already an approximation layered on top
+of the core (and always-available) deployment counts above.
 
 ## Running locally
 

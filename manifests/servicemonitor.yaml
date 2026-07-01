@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: azure-devops-exporter
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: azure-devops-exporter
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 5m
