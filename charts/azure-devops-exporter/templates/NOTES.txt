@@ -1,0 +1,14 @@
+azure-devops-exporter has been installed.
+
+Check that it's scraping successfully:
+
+  kubectl port-forward svc/{{ include "azure-devops-exporter.fullname" . }} 8080:{{ .Values.service.port }}
+  curl localhost:8080/metrics
+  curl localhost:8080/ready
+
+{{- if not .Values.serviceMonitor.enabled }}
+
+serviceMonitor.enabled is false, so Prometheus won't discover this target automatically.
+Either set serviceMonitor.enabled=true (requires the Prometheus Operator) or add a static
+scrape config pointing at the Service above.
+{{- end }}

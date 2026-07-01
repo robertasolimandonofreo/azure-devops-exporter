@@ -1,0 +1,6 @@
+apiVersion: v2
+name: azure-devops-exporter
+description: Prometheus exporter for Azure DevOps Repos, Boards, Pipelines and Releases
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

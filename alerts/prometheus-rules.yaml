@@ -1,0 +1,93 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: azure-devops-exporter-alerts
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: azure-devops-exporter.rules
+      rules:
+        # azure_devops_exporter_scrape_errors_total is the one real Prometheus counter this
+        # exporter exposes, so increase() is correct here.
+        - alert: AzureDevOpsExporterScrapeFailing
+          expr: increase(azure_devops_exporter_scrape_errors_total[10m]) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Azure DevOps Exporter scrape failing
+            description: >-
+              The exporter has failed to scrape the {{ $labels.component }} component
+              for project {{ $labels.project }} in the last 10 minutes.
+
+        - alert: AzureDevOpsExporterScrapeStale
+          expr: time() - azure_devops_exporter_last_successful_scrape_timestamp > 900
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: Azure DevOps Exporter has not completed a successful scrape recently
+            description: >-
+              Component {{ $labels.component }} for project {{ $labels.project }} has not
+              completed a successful scrape in over 15 minutes.
+
+        # Every metric below this point is a gauge (a recomputed snapshot per scrape, not a
+        # monotonic counter — see the README), so these alerts compare current values
+        # directly instead of using increase()/rate().
+        - alert: AzureDevOpsPipelineFailing
+          expr: azure_devops_pipeline_runs_failed > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Azure DevOps pipeline has failing runs
+            description: >-
+              Pipeline {{ $labels.pipeline }} in project {{ $labels.project }} has
+              {{ $value }} failed run(s) in the last 24 hours.
+
+        - alert: AzureDevOpsPipelineNotRunRecently
+          expr: (time() - azure_devops_pipeline_last_run_timestamp) > 7 * 24 * 3600
+          for: 10m
+          labels:
+            severity: info
+          annotations:
+            summary: Azure DevOps pipeline has not run in over a week
+            description: >-
+              Pipeline {{ $labels.pipeline }} in project {{ $labels.project }} last ran
+              more than 7 days ago.
+
+        - alert: AzureDevOpsReleaseDeploymentFailing
+          expr: azure_devops_release_deployments_failed > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Azure DevOps release has failing deployments
+            description: >-
+              Release {{ $labels.release_definition }} / {{ $labels.environment }} in
+              project {{ $labels.project }} has {{ $value }} failed deployment(s) in the
+              last 30 days.
+
+        - alert: AzureDevOpsStalePullRequests
+          expr: azure_devops_repo_stale_pull_requests_total > 0
+          for: 1h
+          labels:
+            severity: info
+          annotations:
+            summary: Stale pull requests detected
+            description: >-
+              Repository {{ $labels.repository }} in project {{ $labels.project }} has
+              {{ $value }} pull request(s) open for more than 14 days.
+
+        - alert: AzureDevOpsStaleWorkItems
+          expr: azure_devops_boards_work_items_stale_total > 0
+          for: 1h
+          labels:
+            severity: info
+          annotations:
+            summary: Stale work items detected
+            description: >-
+              Project {{ $labels.project }} has {{ $value }} {{ $labels.work_item_type }}
+              work item(s) in state {{ $labels.state }} with no changes in more than 14
+              days.

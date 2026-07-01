@@ -1,0 +1,58 @@
+replicaCount: 1
+
+image:
+  repository: azure-devops-exporter
+  tag: latest
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+# azureDevOps configures the exporter's connection to Azure DevOps. organization and
+# projects are required; token is required unless existingSecret is set.
+azureDevOps:
+  organization: "my-org"
+  projects: "proj-a,proj-b"
+  apiUrl: "https://dev.azure.com"
+  token: "change-me"
+  # existingSecret, if set, is the name of a pre-existing Secret with an
+  # AZURE_DEVOPS_TOKEN key — the chart won't create its own Secret in that case, and
+  # azureDevOps.token above is ignored.
+  existingSecret: ""
+
+exporter:
+  port: 8080
+  scrapeIntervalSeconds: 300
+  logLevel: info
+
+service:
+  type: ClusterIP
+  port: 8080
+
+serviceMonitor:
+  # Requires the Prometheus Operator CRDs to be installed in the cluster.
+  enabled: true
+  interval: 5m
+  labels:
+    release: prometheus
+
+# Defaults for a small Go binary that's mostly idle between scrapes, with brief CPU/memory
+# spikes while paginating through API responses during a scrape cycle. Tune down further if
+# you run a single small project, or up if you scrape many projects with large repos/boards.
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi
+
+securityContext:
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
