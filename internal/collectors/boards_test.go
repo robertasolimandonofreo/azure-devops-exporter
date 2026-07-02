@@ -296,6 +296,86 @@ func TestCollectBoards(t *testing.T) {
 	}
 }
 
+func TestSplitCustomFieldValues(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want []string
+	}{
+		{"", nil},
+		{"iOS", []string{"iOS"}},
+		{"cxm;nps;opencx", []string{"cxm", "nps", "opencx"}},
+		{"cxm; nps ;opencx", []string{"cxm", "nps", "opencx"}},
+		{"cxm;;nps", []string{"cxm", "nps"}},
+		{"cxm;", []string{"cxm"}},
+	}
+	for _, c := range cases {
+		got := splitCustomFieldValues(c.raw)
+		if len(got) != len(c.want) {
+			t.Errorf("splitCustomFieldValues(%q) = %v, want %v", c.raw, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("splitCustomFieldValues(%q) = %v, want %v", c.raw, got, c.want)
+				break
+			}
+		}
+	}
+}
+
+// TestCollectBoards_CustomFieldMultiValue covers a multi-select picklist custom field (Azure
+// DevOps serializes the selected values as one ";"-separated string): each work item must count
+// under every value it has, not just get filed under the whole raw string as a single bucket —
+// otherwise a query for one value would miss every item that also carries other values.
+func TestCollectBoards_CustomFieldMultiValue(t *testing.T) {
+	now := time.Now()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/_apis/wit/wiql"):
+			json.NewEncoder(w).Encode(map[string]any{"workItems": []map[string]int{{"id": 1}, {"id": 2}}})
+		case strings.HasSuffix(r.URL.Path, "/_apis/wit/workitemsbatch"):
+			json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{
+				{"id": 1, "fields": map[string]any{
+					"System.WorkItemType": "Task",
+					"System.State":        "Active",
+					"System.CreatedDate":  now.Format(time.RFC3339),
+					"System.ChangedDate":  now.Format(time.RFC3339),
+					"Custom.Platform":     "cxm;nps",
+				}},
+				{"id": 2, "fields": map[string]any{
+					"System.WorkItemType": "Task",
+					"System.State":        "Active",
+					"System.CreatedDate":  now.Format(time.RFC3339),
+					"System.ChangedDate":  now.Format(time.RFC3339),
+					"Custom.Platform":     "cxm",
+				}},
+			}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := azuredevops.NewClient(server.URL, "org", "token")
+	customFields := []azuredevops.CustomField{{RefName: "Custom.Platform", Label: "platform"}}
+	if err := CollectBoards(client, "org", "proj-multivalue", customFields); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Both items carry "cxm", so it must count 2 even though item 1's raw value is "cxm;nps".
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj-multivalue", "Task", "Active", "platform", "cxm"); got != 2 {
+		t.Errorf("BoardsWorkItemsByCustomFieldTotal[...,platform,cxm] = %v, want 2", got)
+	}
+	// Only item 1 carries "nps".
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj-multivalue", "Task", "Active", "platform", "nps"); got != 1 {
+		t.Errorf("BoardsWorkItemsByCustomFieldTotal[...,platform,nps] = %v, want 1", got)
+	}
+	// The combined raw string must not itself be a bucket.
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj-multivalue", "Task", "Active", "platform", "cxm;nps"); got != 0 {
+		t.Errorf("BoardsWorkItemsByCustomFieldTotal[...,platform,\"cxm;nps\"] = %v, want 0 (should be split)", got)
+	}
+}
+
 // TestCollectBoards_FallsBackWithoutCustomFieldsOn400 covers the real-world failure mode where
 // Azure DevOps rejects an entire workitemsbatch request with HTTP 400 because one requested
 // field's reference name doesn't exist (e.g. a typo, or a display name used instead of the

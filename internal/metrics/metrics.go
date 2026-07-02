@@ -215,7 +215,7 @@ var (
 
 	BoardsWorkItemsByCustomFieldTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_work_items_by_custom_field_total",
-		Help: "Number of work items by type, state and configured custom field value. Only populated for fields listed in AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS — see README. Items where the field is unset are counted under value=\"unset\".",
+		Help: "Number of work items by type, state and configured custom field value. Only populated for fields listed in AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS — see README. Items where the field is unset are counted under value=\"unset\"; a multi-select field's \";\"-separated values are split, so one item can count under more than one value.",
 	}, []string{"organization", "project", "work_item_type", "state", "field", "value"})
 
 	// Pipelines domain.

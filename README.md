@@ -95,13 +95,23 @@ reliable way to get it: **Project Settings → Process → (work item type) →
 `GET https://dev.azure.com/{org}/{project}/_apis/wit/fields?api-version=7.1`
 and match on the field's display name.
 
-Multi-value fields (tags, multi-select picklists) and non-string fields are
-stringified best-effort: identity-picker fields use the assigned person's
-display name, numbers/booleans use their default string form, and anything
-that doesn't decode as a plain string, an identity, or one of those falls
-back to an empty (effectively `unset`) value — this covers the common
-single-value text/picklist case a "Platform" field is, not every custom
-field type Azure DevOps supports.
+Non-string fields are stringified best-effort: identity-picker fields use
+the assigned person's display name, numbers/booleans use their default
+string form, and anything that doesn't decode as a plain string, an
+identity, or one of those falls back to an empty (effectively `unset`)
+value — this covers the common text/picklist case a "Platform" field is,
+not every custom field type Azure DevOps supports.
+
+**Multi-select picklist fields are split.** Azure DevOps serializes a
+multi-select field's selected values as one `;`-separated string (e.g.
+`"cxm;nps;opencx"`). Rather than exposing that whole string as a single
+`value`, the collector splits it and counts the work item under *every*
+value it has — so `work_items_by_custom_field_total{field="platform",
+value="cxm"}` includes an item whose full selection is `"cxm;nps"`, not
+just items where `cxm` is the only value selected. This means, for a
+multi-select field, `sum(...) by (value)` no longer adds up to
+`work_items_total` — a single item can contribute to more than one `value`
+series, same as tags conceptually work anywhere else.
 
 ## Endpoints
 
