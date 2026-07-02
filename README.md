@@ -601,7 +601,7 @@ kubectl create secret generic azure-devops-token \
 helm upgrade --install azure-devops-exporter \
   oci://ghcr.io/robertasolimandonofreo/charts/azure-devops-exporter \
   --namespace monitoring \
-  --version "${CHART_VERSION:-0.1.0}" \
+  --version "${CHART_VERSION:-0.1.1}" \
   -f "${SCRIPT_DIR}/values.yaml" \
   --wait \
   --timeout 5m

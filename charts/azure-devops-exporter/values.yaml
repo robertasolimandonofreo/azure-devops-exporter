@@ -5,7 +5,12 @@ image:
   # and on "vX.Y.Z" git tags (semver tags). Override for a fork or a different registry.
   repository: ghcr.io/robertasolimandonofreo/azure-devops-exporter
   tag: latest
-  pullPolicy: IfNotPresent
+  # "latest" is a mutable tag — a node that already pulled it once will keep reusing that
+  # cached copy under IfNotPresent even after the registry's "latest" moves to a new image,
+  # since IfNotPresent only checks whether the name:tag string exists locally, not whether its
+  # content changed. Always is the safe default for a moving tag; if you pin image.tag to an
+  # immutable reference (a specific git SHA or "vX.Y.Z" release), IfNotPresent is fine again.
+  pullPolicy: Always
 
 nameOverride: ""
 fullnameOverride: ""
