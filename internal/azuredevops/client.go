@@ -404,24 +404,39 @@ type Iteration struct {
 	Attributes struct {
 		StartDate  time.Time `json:"startDate"`
 		FinishDate time.Time `json:"finishDate"`
+		// TimeFrame is "past", "current" or "future", as classified by Azure DevOps itself.
+		// Used to filter client-side in ListTeamIterations — see that function's comment for why.
+		TimeFrame string `json:"timeFrame"`
 	} `json:"attributes"`
 }
 
 // ListTeamIterations returns a team's iterations for the given timeframe ("past", "current",
 // "future"), or every iteration if timeframe is empty.
+//
+// Azure DevOps' own "$timeframe" query parameter only accepts the value "current" — any other
+// value, including "past" (which every caller needing sprint history relies on), makes the API
+// respond with an InvalidTeamSettingsIterationException instead of the filtered list. So this
+// always fetches every iteration for the team (no server-side filter at all) and filters
+// client-side on each iteration's own attributes.timeFrame field instead, which Azure DevOps
+// does populate correctly per iteration regardless of the (unusable) query parameter.
 func (c *Client) ListTeamIterations(project, team, timeframe string) ([]Iteration, error) {
 	path := fmt.Sprintf("%s/%s/%s/_apis/work/teamsettings/iterations", c.baseURL, url.PathEscape(project), url.PathEscape(team))
-	query := url.Values{"api-version": {apiVersion}}
-	if timeframe != "" {
-		query.Set("$timeframe", timeframe)
-	}
 	var result struct {
 		Value []Iteration `json:"value"`
 	}
-	if err := c.get(path, query, &result); err != nil {
+	if err := c.get(path, url.Values{"api-version": {apiVersion}}, &result); err != nil {
 		return nil, fmt.Errorf("list team iterations: %w", err)
 	}
-	return result.Value, nil
+	if timeframe == "" {
+		return result.Value, nil
+	}
+	filtered := make([]Iteration, 0, len(result.Value))
+	for _, it := range result.Value {
+		if it.Attributes.TimeFrame == timeframe {
+			filtered = append(filtered, it)
+		}
+	}
+	return filtered, nil
 }
 
 // GetCurrentIteration returns the team's current-timeframe iteration (its active sprint), or

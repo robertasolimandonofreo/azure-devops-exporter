@@ -514,10 +514,16 @@ func TestGetCurrentIteration(t *testing.T) {
 		if !strings.HasSuffix(r.URL.Path, "/proj/Team A/_apis/work/teamsettings/iterations") {
 			t.Errorf("path = %q, want suffix /proj/Team A/_apis/work/teamsettings/iterations", r.URL.Path)
 		}
-		if got := r.URL.Query().Get("$timeframe"); got != "current" {
-			t.Errorf("$timeframe = %q, want current", got)
+		// Azure DevOps' $timeframe query parameter only accepts "current" server-side (any
+		// other value 400s) — ListTeamIterations must not send it at all and instead filter
+		// client-side, so every timeframe (including "past") works through the same call.
+		if got := r.URL.Query().Get("$timeframe"); got != "" {
+			t.Errorf("$timeframe = %q, want unset (filtering must happen client-side)", got)
 		}
-		json.NewEncoder(w).Encode(map[string]any{"value": []Iteration{{ID: "iter-1"}}})
+		json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{
+			{"id": "iter-past", "attributes": map[string]any{"timeFrame": "past"}},
+			{"id": "iter-1", "attributes": map[string]any{"timeFrame": "current"}},
+		}})
 	}))
 	defer server.Close()
 
@@ -533,7 +539,9 @@ func TestGetCurrentIteration(t *testing.T) {
 
 func TestGetCurrentIteration_NoneConfigured(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{"value": []Iteration{}})
+		json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{
+			{"id": "iter-past", "attributes": map[string]any{"timeFrame": "past"}},
+		}})
 	}))
 	defer server.Close()
 
@@ -549,16 +557,18 @@ func TestGetCurrentIteration_NoneConfigured(t *testing.T) {
 
 func TestListTeamIterations_Past(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.URL.Query().Get("$timeframe"); got != "past" {
-			t.Errorf("$timeframe = %q, want past", got)
+		if got := r.URL.Query().Get("$timeframe"); got != "" {
+			t.Errorf("$timeframe = %q, want unset (filtering must happen client-side)", got)
 		}
 		json.NewEncoder(w).Encode(map[string]any{
 			"value": []map[string]any{
 				{"id": "iter-p1", "name": "Sprint P1", "attributes": map[string]any{
 					"startDate":  "2026-06-01T00:00:00Z",
 					"finishDate": "2026-06-14T00:00:00Z",
+					"timeFrame":  "past",
 				}},
-				{"id": "iter-p2", "name": "Sprint P2"},
+				{"id": "iter-p2", "name": "Sprint P2", "attributes": map[string]any{"timeFrame": "past"}},
+				{"id": "iter-cur", "name": "Sprint Current", "attributes": map[string]any{"timeFrame": "current"}},
 			},
 		})
 	}))
