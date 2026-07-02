@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -118,11 +119,17 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 			effort[tsKey] += *f.Effort
 		}
 		for _, cf := range customFields {
-			value := item.CustomFields[cf.Label]
-			if value == "" {
-				value = unsetCustomFieldValue
+			values := splitCustomFieldValues(item.CustomFields[cf.Label])
+			if len(values) == 0 {
+				byCustomField[customFieldKey{f.WorkItemType, f.State, cf.Label, unsetCustomFieldValue}]++
+				continue
 			}
-			byCustomField[customFieldKey{f.WorkItemType, f.State, cf.Label, value}]++
+			// A multi-select field contributes to every value it has, not just one — an item
+			// tagged "cxm;nps" must count under both value="cxm" and value="nps", so a query
+			// filtered to one value isn't blind to items that also carry other values.
+			for _, v := range values {
+				byCustomField[customFieldKey{f.WorkItemType, f.State, cf.Label, v}]++
+			}
 		}
 	}
 
@@ -352,4 +359,23 @@ func isTerminalState(state string) bool {
 		}
 	}
 	return false
+}
+
+// splitCustomFieldValues splits a custom field's raw string on ";" — how Azure DevOps
+// serializes a multi-select picklist field's selected values (e.g. "cxm;nps;opencx") — and
+// trims whitespace around each one. A single-value field (no ";") comes back as one element,
+// same as before this split existed. An empty/unset field returns nil.
+func splitCustomFieldValues(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ";")
+	values := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			values = append(values, p)
+		}
+	}
+	return values
 }
