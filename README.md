@@ -580,7 +580,52 @@ organization, projects and token before applying.
 ### With Helm
 
 `charts/azure-devops-exporter` is equivalent to the raw manifests above,
-parameterized via `values.yaml`:
+parameterized via `values.yaml`. `.github/workflows/helm-publish.yml`
+publishes it as an OCI artifact to GHCR (same registry as the image, see
+above) on every push to `main` that touches the chart, tagged with
+`Chart.yaml`'s `version` — so it can be installed straight from there
+without cloning this repo, the same way you'd `helm upgrade --install` any
+other chart from a registry:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+kubectl create secret generic azure-devops-token \
+  --namespace monitoring \
+  --from-literal=AZURE_DEVOPS_TOKEN="${AZURE_DEVOPS_TOKEN}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+helm upgrade --install azure-devops-exporter \
+  oci://ghcr.io/robertasolimandonofreo/charts/azure-devops-exporter \
+  --namespace monitoring \
+  --version "${CHART_VERSION:-0.1.0}" \
+  -f "${SCRIPT_DIR}/values.yaml" \
+  --wait \
+  --timeout 5m
+```
+
+No `helm repo add` step — OCI charts are referenced directly by registry
+URL. `values.yaml` next to the script only needs the exporter-specific
+keys (`azureDevOps.*`, `nodeSelector`, `resources`, etc. — see
+`values-edp.example.yaml` in this repo for a filled-in one to copy from);
+`azureDevOps.existingSecret: azure-devops-token` points it at the Secret
+created above instead of `azureDevOps.token`, so the token itself never
+needs to touch the values file or `--set`. The `kubectl create secret
+... --dry-run=client -o yaml | kubectl apply -f -` idiom makes that step
+idempotent (safe to rerun) without `kubectl create secret`'s "already
+exists" error on a second run.
+
+Like the image, the first version pushed to GHCR is **private by
+default** — same one-time visibility fix as documented above, but for the
+`charts/azure-devops-exporter` package (a separate package entry from the
+image itself, even though both live under `ghcr.io/robertasolimandonofreo`).
+
+**Working from a local checkout instead** (e.g. iterating on the chart
+itself) uses the chart directory as the source instead of the OCI
+reference — the rest of the flags are identical either way:
 
 ```bash
 helm install azure-devops-exporter charts/azure-devops-exporter \
