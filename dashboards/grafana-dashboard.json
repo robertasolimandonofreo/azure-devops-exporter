@@ -1292,6 +1292,28 @@
         "h": 7,
         "w": 24,
         "x": 0,
+        "y": 132
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Sprint delivery: on time vs late vs not delivered",
+      "description": "Per team, per past sprint: work items closed on or before the sprint end date (on_time), closed after it (late), or never closed (not_delivered). See README for exact semantics and how many sprints.",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_boards_sprint_delivery_total{organization=~\"$organization\", project=~\"$project\"}) by (team, iteration, status)",
+          "legendFormat": "{{team}} \u2014 {{iteration}} ({{status}})"
+        }
+      ],
+      "id": 163,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
         "y": 125
       }
     }

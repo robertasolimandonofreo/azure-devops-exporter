@@ -63,15 +63,17 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 
 	type stateKey struct{ workItemType, state, areaPath, iterationPath string }
 	type leadTimeKey struct{ workItemType, areaPath, iterationPath string }
-	type typeStateKey struct{ workItemType, state string }
-	type priorityKey struct{ workItemType, priority string }
-	type customFieldKey struct{ workItemType, state, field, value string }
+	type typeStateKey struct{ workItemType, state, areaPath, iterationPath string }
+	type priorityKey struct{ workItemType, priority, areaPath, iterationPath string }
+	type assigneeKey struct{ assignee, areaPath, iterationPath string }
+	type severityKey struct{ severity, areaPath, iterationPath string }
+	type customFieldKey struct{ workItemType, state, field, value, areaPath, iterationPath string }
 	byState := make(map[stateKey]int)
-	byAssignee := make(map[string]int)
+	byAssignee := make(map[assigneeKey]int)
 	staleByType := make(map[stateKey]int)
 	leadTimesByKey := make(map[leadTimeKey][]float64)
 	byPriority := make(map[priorityKey]int)
-	bugsBySeverity := make(map[string]int)
+	bugsBySeverity := make(map[severityKey]int)
 	withoutEstimate := make(map[typeStateKey]int)
 	withoutIteration := make(map[string]int)
 	withoutAreaPath := make(map[string]int)
@@ -82,13 +84,13 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 	for _, item := range items {
 		f := item.Fields
 		sKey := stateKey{f.WorkItemType, f.State, f.AreaPath, f.IterationPath}
-		tsKey := typeStateKey{f.WorkItemType, f.State}
+		tsKey := typeStateKey{f.WorkItemType, f.State, f.AreaPath, f.IterationPath}
 
 		byState[sKey]++
-		byAssignee[assigneeOf(item)]++
+		byAssignee[assigneeKey{assigneeOf(item), f.AreaPath, f.IterationPath}]++
 
 		if !isTerminalState(f.State) && now.Sub(f.ChangedDate) > staleThreshold {
-			staleByType[stateKey{workItemType: f.WorkItemType, state: f.State}]++
+			staleByType[sKey]++
 		}
 
 		if isTerminalState(f.State) && !f.ClosedDate.IsZero() && !f.CreatedDate.IsZero() {
@@ -98,10 +100,10 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 		}
 
 		if f.Priority != 0 {
-			byPriority[priorityKey{f.WorkItemType, strconv.Itoa(f.Priority)}]++
+			byPriority[priorityKey{f.WorkItemType, strconv.Itoa(f.Priority), f.AreaPath, f.IterationPath}]++
 		}
 		if f.WorkItemType == "Bug" && f.Severity != "" {
-			bugsBySeverity[f.Severity]++
+			bugsBySeverity[severityKey{f.Severity, f.AreaPath, f.IterationPath}]++
 		}
 		if f.StoryPoints == nil && f.Effort == nil {
 			withoutEstimate[tsKey]++
@@ -121,14 +123,14 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 		for _, cf := range customFields {
 			values := splitCustomFieldValues(item.CustomFields[cf.Label])
 			if len(values) == 0 {
-				byCustomField[customFieldKey{f.WorkItemType, f.State, cf.Label, unsetCustomFieldValue}]++
+				byCustomField[customFieldKey{f.WorkItemType, f.State, cf.Label, unsetCustomFieldValue, f.AreaPath, f.IterationPath}]++
 				continue
 			}
 			// A multi-select field contributes to every value it has, not just one — an item
 			// tagged "cxm;nps" must count under both value="cxm" and value="nps", so a query
 			// filtered to one value isn't blind to items that also carry other values.
 			for _, v := range values {
-				byCustomField[customFieldKey{f.WorkItemType, f.State, cf.Label, v}]++
+				byCustomField[customFieldKey{f.WorkItemType, f.State, cf.Label, v, f.AreaPath, f.IterationPath}]++
 			}
 		}
 	}
@@ -159,15 +161,15 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 	for k, count := range byState {
 		metrics.BoardsWorkItemsByState.WithLabelValues(organization, project, k.workItemType, k.state, k.areaPath, k.iterationPath).Set(float64(count))
 	}
-	for assignee, count := range byAssignee {
-		metrics.BoardsWorkItemsByAssignee.WithLabelValues(organization, project, assignee).Set(float64(count))
+	for k, count := range byAssignee {
+		metrics.BoardsWorkItemsByAssignee.WithLabelValues(organization, project, k.assignee, k.areaPath, k.iterationPath).Set(float64(count))
 	}
 	for k, count := range staleByType {
-		metrics.BoardsWorkItemsStaleTotal.WithLabelValues(organization, project, k.workItemType, k.state).Set(float64(count))
+		metrics.BoardsWorkItemsStaleTotal.WithLabelValues(organization, project, k.workItemType, k.state, k.areaPath, k.iterationPath).Set(float64(count))
 	}
 	for _, item := range items {
 		ageDays := now.Sub(item.Fields.CreatedDate).Hours() / 24
-		metrics.BoardsWorkItemAgeDays.WithLabelValues(organization, project, item.Fields.WorkItemType, item.Fields.State, assigneeOf(item), strconv.Itoa(item.ID)).Set(ageDays)
+		metrics.BoardsWorkItemAgeDays.WithLabelValues(organization, project, item.Fields.WorkItemType, item.Fields.State, assigneeOf(item), strconv.Itoa(item.ID), item.Fields.AreaPath, item.Fields.IterationPath).Set(ageDays)
 	}
 	for k, days := range leadTimesByKey {
 		sort.Float64s(days)
@@ -178,13 +180,13 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 		metrics.BoardsLeadTimeMaxDays.WithLabelValues(labels...).Set(days[len(days)-1])
 	}
 	for k, count := range byPriority {
-		metrics.BoardsWorkItemsByPriority.WithLabelValues(organization, project, k.workItemType, k.priority).Set(float64(count))
+		metrics.BoardsWorkItemsByPriority.WithLabelValues(organization, project, k.workItemType, k.priority, k.areaPath, k.iterationPath).Set(float64(count))
 	}
-	for severity, count := range bugsBySeverity {
-		metrics.BoardsBugsBySeverity.WithLabelValues(organization, project, severity).Set(float64(count))
+	for k, count := range bugsBySeverity {
+		metrics.BoardsBugsBySeverity.WithLabelValues(organization, project, k.severity, k.areaPath, k.iterationPath).Set(float64(count))
 	}
 	for k, count := range withoutEstimate {
-		metrics.BoardsWorkItemsWithoutEstimateTotal.WithLabelValues(organization, project, k.workItemType, k.state).Set(float64(count))
+		metrics.BoardsWorkItemsWithoutEstimateTotal.WithLabelValues(organization, project, k.workItemType, k.state, k.areaPath, k.iterationPath).Set(float64(count))
 	}
 	for workItemType, count := range withoutIteration {
 		metrics.BoardsWorkItemsWithoutIterationTotal.WithLabelValues(organization, project, workItemType).Set(float64(count))
@@ -193,13 +195,13 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 		metrics.BoardsWorkItemsWithoutAreaPathTotal.WithLabelValues(organization, project, workItemType).Set(float64(count))
 	}
 	for k, sum := range storyPoints {
-		metrics.BoardsStoryPointsTotal.WithLabelValues(organization, project, k.workItemType, k.state).Set(sum)
+		metrics.BoardsStoryPointsTotal.WithLabelValues(organization, project, k.workItemType, k.state, k.areaPath, k.iterationPath).Set(sum)
 	}
 	for k, sum := range effort {
-		metrics.BoardsEffortTotal.WithLabelValues(organization, project, k.workItemType, k.state).Set(sum)
+		metrics.BoardsEffortTotal.WithLabelValues(organization, project, k.workItemType, k.state, k.areaPath, k.iterationPath).Set(sum)
 	}
 	for k, count := range byCustomField {
-		metrics.BoardsWorkItemsByCustomFieldTotal.WithLabelValues(organization, project, k.workItemType, k.state, k.field, k.value).Set(float64(count))
+		metrics.BoardsWorkItemsByCustomFieldTotal.WithLabelValues(organization, project, k.workItemType, k.state, k.field, k.value, k.areaPath, k.iterationPath).Set(float64(count))
 	}
 
 	collectTeamMetrics(client, organization, project, items)
@@ -224,6 +226,7 @@ func collectTeamMetrics(client *azuredevops.Client, organization, project string
 	metrics.BoardsActiveSprintStoryPointsTotal.DeletePartialMatch(labelFilter)
 	metrics.BoardsTeamCapacityHoursPerDay.DeletePartialMatch(labelFilter)
 	metrics.BoardsSprintVelocityStoryPoints.DeletePartialMatch(labelFilter)
+	metrics.BoardsSprintDeliveryTotal.DeletePartialMatch(labelFilter)
 
 	teams, err := client.ListTeams(project)
 	if err != nil {
@@ -238,7 +241,7 @@ func collectTeamMetrics(client *azuredevops.Client, organization, project string
 	byTeamState := make(map[teamStateKey]int)
 	for _, team := range teams {
 		collectActiveSprint(client, organization, project, team, itemByID, byTeamState)
-		collectSprintVelocity(client, organization, project, team, itemByID)
+		collectSprintHistory(client, organization, project, team, itemByID)
 	}
 
 	for k, count := range byTeamState {
@@ -275,11 +278,22 @@ func collectActiveSprint(client *azuredevops.Client, organization, project strin
 	}
 }
 
-// collectSprintVelocity sets the sprint velocity metric for a team's last velocitySprintCount
-// past sprints (fewer if the team doesn't have that many), one series per iteration. Velocity
-// only counts work items whose current state is terminal — an item still open past its sprint's
-// end isn't "completed work" for that sprint, even though it's still associated with it.
-func collectSprintVelocity(client *azuredevops.Client, organization, project string, team azuredevops.Team, itemByID map[int]azuredevops.WorkItem) {
+// collectSprintHistory sets the sprint velocity and delivery metrics for a team's last
+// velocitySprintCount past sprints (fewer if the team doesn't have that many), one series per
+// iteration, from a single fetch of each iteration's work items — delivery status is a
+// by-product of the same data velocity already needs, so this costs no extra API calls beyond
+// what velocity alone would.
+//
+// Velocity only counts work items whose current state is terminal — an item still open past its
+// sprint's end isn't "completed work" for that sprint, even though it's still associated with
+// it. Delivery status classifies every item in the sprint's backlog three ways: "on_time" (closed
+// on or before the sprint's own end date — delivered as committed), "late" (closed, but after the
+// sprint ended), or "not_delivered" (never reached a terminal state at all, even though the
+// sprint is over). A terminal item with no ClosedDate recorded still counts toward velocity but
+// can't be classified as on_time or late (no date to compare), so it contributes to neither. If
+// the iteration itself has no FinishDate on record, delivery status is skipped entirely for it —
+// velocity is unaffected either way.
+func collectSprintHistory(client *azuredevops.Client, organization, project string, team azuredevops.Team, itemByID map[int]azuredevops.WorkItem) {
 	pastIterations, err := client.ListTeamIterations(project, team.Name, "past")
 	if err != nil || len(pastIterations) == 0 {
 		return
@@ -296,15 +310,35 @@ func collectSprintVelocity(client *azuredevops.Client, organization, project str
 		if err != nil {
 			continue
 		}
+
 		var points float64
+		var onTime, late, notDelivered int
 		for _, id := range ids {
 			item, ok := itemByID[id]
-			if !ok || !isTerminalState(item.Fields.State) {
+			if !ok {
+				continue
+			}
+			if !isTerminalState(item.Fields.State) {
+				notDelivered++
 				continue
 			}
 			points += pointsOf(item)
+			if item.Fields.ClosedDate.IsZero() || iteration.Attributes.FinishDate.IsZero() {
+				continue
+			}
+			if !item.Fields.ClosedDate.After(iteration.Attributes.FinishDate) {
+				onTime++
+			} else {
+				late++
+			}
 		}
 		metrics.BoardsSprintVelocityStoryPoints.WithLabelValues(organization, project, team.Name, iteration.Name).Set(points)
+
+		if !iteration.Attributes.FinishDate.IsZero() {
+			metrics.BoardsSprintDeliveryTotal.WithLabelValues(organization, project, team.Name, iteration.Name, "on_time").Set(float64(onTime))
+			metrics.BoardsSprintDeliveryTotal.WithLabelValues(organization, project, team.Name, iteration.Name, "late").Set(float64(late))
+			metrics.BoardsSprintDeliveryTotal.WithLabelValues(organization, project, team.Name, iteration.Name, "not_delivered").Set(float64(notDelivered))
+		}
 	}
 }
 

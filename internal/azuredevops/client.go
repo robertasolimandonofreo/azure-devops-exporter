@@ -402,7 +402,8 @@ type Iteration struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	Attributes struct {
-		StartDate time.Time `json:"startDate"`
+		StartDate  time.Time `json:"startDate"`
+		FinishDate time.Time `json:"finishDate"`
 	} `json:"attributes"`
 }
 
