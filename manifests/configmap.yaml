@@ -4,6 +4,9 @@ metadata:
   name: azure-devops-exporter
 data:
   AZURE_DEVOPS_ORGANIZATION: "my-org"
+  # Optionally restrict a project to specific collectors with ":collector+collector"
+  # (repos, boards, pipelines, releases) — e.g. "proj-a:pipelines+boards,proj-b:repos" —
+  # see README's "Per-project collector selection" section.
   AZURE_DEVOPS_PROJECTS: "proj-a,proj-b"
   AZURE_DEVOPS_API_URL: "https://dev.azure.com"
   EXPORTER_PORT: "8080"

@@ -15,7 +15,13 @@ import (
 // boardsFakeServer serves 5 work items: two active tasks (one assigned, one not, the
 // unassigned one stale), two closed bugs in the same area/iteration (lead times of 50 and 10
 // days, to exercise the lead time aggregation), and a third active task with no area/iteration
-// path set (to exercise the without_iteration/without_area_path metrics).
+// path set (to exercise the without_iteration/without_area_path metrics). It also serves a
+// single team ("Team A") with one current-timeframe iteration ("Sprint 1", backlog: items 1
+// and 2, exercising the active-sprint and capacity metrics) and two past iterations ("Sprint
+// P1" backlog: item 3; "Sprint P2" backlog: items 2 and 4 — item 2 is still Active, so it must
+// be excluded from velocity, while item 4 has no Story Points and exercises the Effort
+// fallback), exercising the velocity metric and its sort-by-start-date behavior (the server
+// deliberately returns them out of chronological order).
 func boardsFakeServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	now := time.Now()
@@ -95,6 +101,40 @@ func boardsFakeServer(t *testing.T) *httptest.Server {
 				}},
 			}
 			json.NewEncoder(w).Encode(map[string]any{"value": items})
+		case strings.Contains(r.URL.Path, "/_apis/projects/") && strings.HasSuffix(r.URL.Path, "/teams"):
+			json.NewEncoder(w).Encode(map[string]any{"value": []map[string]string{{"id": "team-a-id", "name": "Team A"}}})
+		case strings.HasSuffix(r.URL.Path, "/_apis/work/teamsettings/iterations"):
+			switch r.URL.Query().Get("$timeframe") {
+			case "current":
+				json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{{"id": "iter-1", "name": "Sprint 1"}}})
+			case "past":
+				// Deliberately out of chronological order, to exercise the collector's own sort.
+				json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{
+					{"id": "iter-p2", "name": "Sprint P2", "attributes": map[string]any{"startDate": now.Add(-10 * 24 * time.Hour).Format(time.RFC3339)}},
+					{"id": "iter-p1", "name": "Sprint P1", "attributes": map[string]any{"startDate": now.Add(-24 * 24 * time.Hour).Format(time.RFC3339)}},
+				}})
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		case strings.HasSuffix(r.URL.Path, "/_apis/work/teamsettings/iterations/iter-1/workitems"):
+			json.NewEncoder(w).Encode(map[string]any{"workItemRelations": []map[string]any{
+				{"target": map[string]any{"id": 1}},
+				{"target": map[string]any{"id": 2}},
+			}})
+		case strings.HasSuffix(r.URL.Path, "/_apis/work/teamsettings/iterations/iter-1/capacities"):
+			json.NewEncoder(w).Encode(map[string]any{"teamMembers": []map[string]any{
+				{"activities": []map[string]any{{"capacityPerDay": 4.0}, {"capacityPerDay": 2.0}}},
+				{"activities": []map[string]any{{"capacityPerDay": 3.0}}},
+			}})
+		case strings.HasSuffix(r.URL.Path, "/_apis/work/teamsettings/iterations/iter-p1/workitems"):
+			json.NewEncoder(w).Encode(map[string]any{"workItemRelations": []map[string]any{
+				{"target": map[string]any{"id": 3}},
+			}})
+		case strings.HasSuffix(r.URL.Path, "/_apis/work/teamsettings/iterations/iter-p2/workitems"):
+			json.NewEncoder(w).Encode(map[string]any{"workItemRelations": []map[string]any{
+				{"target": map[string]any{"id": 2}},
+				{"target": map[string]any{"id": 4}},
+			}})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -208,6 +248,31 @@ func TestCollectBoards(t *testing.T) {
 	// Effort: Bug/Closed = item3(8) + item4(2) = 10.
 	if got := gaugeValue(t, metrics.BoardsEffortTotal, "org", "proj", "Bug", "Closed"); got != 10 {
 		t.Errorf("BoardsEffortTotal[Bug,Closed] = %v, want 10", got)
+	}
+
+	// Team A's current sprint (iter-1) contains items 1 and 2, both Task/Active.
+	if got := gaugeValue(t, metrics.BoardsActiveSprintWorkItemsTotal, "org", "proj", "Team A", "Task", "Active"); got != 2 {
+		t.Errorf("BoardsActiveSprintWorkItemsTotal[Team A,Task,Active] = %v, want 2", got)
+	}
+
+	// Active sprint story points: item1 has 3, item2 has neither Story Points nor Effort.
+	if got := gaugeValue(t, metrics.BoardsActiveSprintStoryPointsTotal, "org", "proj", "Team A"); got != 3 {
+		t.Errorf("BoardsActiveSprintStoryPointsTotal[Team A] = %v, want 3", got)
+	}
+
+	// Team capacity: two members with capacityPerDay [4, 2] and [3] = 9 total.
+	if got := gaugeValue(t, metrics.BoardsTeamCapacityHoursPerDay, "org", "proj", "Team A"); got != 9 {
+		t.Errorf("BoardsTeamCapacityHoursPerDay[Team A] = %v, want 9", got)
+	}
+
+	// Sprint P1's backlog is item 3 (Bug/Closed, Story Points 5) — fully completed.
+	if got := gaugeValue(t, metrics.BoardsSprintVelocityStoryPoints, "org", "proj", "Team A", "Sprint P1"); got != 5 {
+		t.Errorf("BoardsSprintVelocityStoryPoints[Team A,Sprint P1] = %v, want 5", got)
+	}
+	// Sprint P2's backlog is items 2 and 4: item 2 is Task/Active (not completed, excluded);
+	// item 4 is Bug/Closed with no Story Points, so its Effort (2) is used instead.
+	if got := gaugeValue(t, metrics.BoardsSprintVelocityStoryPoints, "org", "proj", "Team A", "Sprint P2"); got != 2 {
+		t.Errorf("BoardsSprintVelocityStoryPoints[Team A,Sprint P2] = %v, want 2", got)
 	}
 }
 

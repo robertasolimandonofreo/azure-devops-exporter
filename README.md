@@ -19,14 +19,36 @@ Supports multiple projects within a single organization from one instance.
 | Variable | Description | Required | Default |
 | --- | --- | --- | --- |
 | `AZURE_DEVOPS_ORGANIZATION` | Azure DevOps organization name | Yes | - |
-| `AZURE_DEVOPS_PROJECTS` | Comma-separated list of project names | Yes | - |
-| `AZURE_DEVOPS_TOKEN` | Personal Access Token (needs Code: Read, Work Items: Read, Build: Read, Release: Read) | Yes | - |
+| `AZURE_DEVOPS_PROJECTS` | Comma-separated list of project names, each optionally restricted to specific collectors — see below | Yes | - |
+| `AZURE_DEVOPS_TOKEN` | Personal Access Token (needs Code: Read, Work Items: Read, Build: Read, Release: Read, Project and Team: Read) | Yes | - |
 | `AZURE_DEVOPS_API_URL` | Azure DevOps API base URL | No | `https://dev.azure.com` |
 | `EXPORTER_PORT` | HTTP port | No | `8080` |
 | `SCRAPE_INTERVAL_SECONDS` | Seconds between scrape cycles | No | `300` |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, or `error` | No | `info` |
 
 The token is never logged; it is only sent in the `Authorization` header.
+
+### Per-project collector selection
+
+By default every project in `AZURE_DEVOPS_PROJECTS` gets all four collectors
+(Repos, Boards, Pipelines, Releases) — this is unchanged from before this
+option existed. To scrape only some collectors for a given project, append
+`:` and a `+`-separated list of collector names (`repos`, `boards`,
+`pipelines`, `releases`) to that project's name:
+
+```bash
+AZURE_DEVOPS_PROJECTS=proj-a:pipelines+boards,proj-b:repos,proj-c
+```
+
+- `proj-a` — only Pipelines and Boards
+- `proj-b` — only Repos
+- `proj-c` — no `:`, so all four collectors (the default)
+
+This is per-project, not global: mixing restricted and unrestricted projects
+in the same `AZURE_DEVOPS_PROJECTS` value, as above, is expected. An unknown
+collector name (typo, wrong case) fails startup with a clear error rather
+than silently being ignored. This only controls which collectors *run* for a
+project — it doesn't change any collector's own behavior or metrics.
 
 ## Endpoints
 
@@ -129,6 +151,10 @@ azure_devops_boards_work_items_without_iteration_total{organization,project,work
 azure_devops_boards_work_items_without_area_path_total{organization,project,work_item_type}
 azure_devops_boards_story_points_total{organization,project,work_item_type,state}
 azure_devops_boards_effort_total{organization,project,work_item_type,state}
+azure_devops_boards_active_sprint_work_items_total{organization,project,team,work_item_type,state}
+azure_devops_boards_active_sprint_story_points_total{organization,project,team}
+azure_devops_boards_team_capacity_hours_per_day{organization,project,team}
+azure_devops_boards_sprint_velocity_story_points{organization,project,team,iteration}
 ```
 
 `azure_devops_boards_work_items_by_type` is intentionally not exposed —
@@ -140,10 +166,69 @@ duplicating the data.
 number of teams and sprints in the project) — if that becomes a problem,
 drop them from `work_items_by_state` first.
 
-`azure_devops_boards_active_sprint_work_items_total` (per team/sprint) is
-deferred: it requires the Teams and Iterations APIs and a new
-`AZURE_DEVOPS_TEAMS`-style config surface, which is a bigger scope decision
-than the rest of this collector.
+`active_sprint_work_items_total` counts, per team, the work items in that
+team's current sprint. Teams are auto-discovered via the Teams API — no
+`AZURE_DEVOPS_TEAMS` config needed — and for each team the collector looks up
+its current-timeframe iteration (Iterations API) and the work items assigned
+to it (the iteration's dedicated work items endpoint, which reflects the
+team's actual sprint backlog rather than a best-effort match against
+`System.IterationPath`, since that path alone doesn't indicate which
+iteration is *current* for a given team). Type/state for each item come from
+the same work item fetch already done for the rest of this collector — no
+extra per-item API calls. A team with no iteration marked current — the
+common case for teams that don't run sprints — or a per-team API error just
+contributes no series for that team, rather than failing the whole
+`CollectBoards` call.
+
+`active_sprint_story_points_total` sums the same current-sprint work items'
+Story Points (falling back to Effort, same convention as `story_points_total`
+above) into one number per team — meant to be read next to
+`team_capacity_hours_per_day` as a rough load-vs-capacity signal, e.g.
+`active_sprint_story_points_total / team_capacity_hours_per_day` in a
+Grafana query, though the two aren't the same unit (points vs hours/day) so
+that ratio is a relative signal, not a literal "hours needed."
+
+`team_capacity_hours_per_day` sums every team member's configured
+`capacityPerDay` (across all their activities) for the team's *current*
+sprint, via the Capacity API. It's named `_hours_per_day` because that's what
+most teams configure capacity in, but Azure DevOps doesn't enforce a unit —
+if a team configures capacity in story points or another unit, the metric
+just reflects whatever number they entered. It is **not** adjusted for team
+members' days off or for how many working days are actually in the sprint —
+both of those need the same capacities response's `daysOff` field plus the
+iteration's date range, which this collector doesn't compute; treat this as
+"nominal daily capacity," not a precise "total hours available this sprint."
+
+`sprint_velocity_story_points` sums Story Points (same Effort fallback) for
+work items in each of a team's last 5 past sprints (`velocitySprintCount` in
+`internal/collectors/boards.go`), one series per iteration name — only items
+whose *current* state is terminal count as "completed," so an item still
+open past its sprint's end is excluded even though it's still associated
+with that sprint. Past iterations come back from the Iterations API in
+unspecified order, so the collector sorts them by `startDate` before taking
+the most recent 5; a team with fewer than 5 past sprints just gets fewer
+series, not zero-padded ones.
+
+**API call cost.** Per scrape, on top of the rest of the Boards collector,
+these four metrics together cost `1` (`ListTeams`, once) plus, per team:
+`GetCurrentIteration` (1) + `ListTeamIterations` for past sprints (1),
+plus **2 more** (`ListIterationWorkItemIDs` + `GetTeamIterationCapacity`) if
+the team has a current sprint, plus **up to 5 more**
+(`ListIterationWorkItemIDs`, one per past sprint used for velocity) if the
+team has that much sprint history. Worst case that's `1 + 9` calls per team.
+For a project with 10 teams that all run sprints and have a full 5-sprint
+history, that's `1 + 9×10 = 91` extra calls every scrape — at the default
+5-minute `SCRAPE_INTERVAL_SECONDS`, ~26,200 calls/day. A more typical mix
+(8 of 10 teams have a current sprint, averaging 3 past sprints each) comes
+out closer to `1 + 10×2 + 8×2 + 8×3 = 61` calls/scrape (~17,600/day). This is
+added to, not multiplied with, the rest of the collector's cost: 3 WIQL
+queries (all work items, created-since, closed-since) plus one
+`workitemsbatch` call per 200 work items, regardless of team count. Unlike
+the Releases collector's lead-time lookups, there's no cache here — sprint
+membership and capacity can change between scrapes, so everything is
+re-fetched every time. If a project has many teams and this becomes a
+noticeable share of API budget, the cheapest mitigations are raising
+`SCRAPE_INTERVAL_SECONDS` or lowering `velocitySprintCount`.
 
 `created_total` and `closed_total` are gauges, not Prometheus counters,
 despite the `_total` suffix from the original spec: the exporter keeps no
@@ -446,7 +531,7 @@ often expected behavior, not a problem, so it isn't alerted on).
 
 ## Grafana dashboard
 
-`dashboards/grafana-dashboard.json` covers all four collectors (45 panels)
+`dashboards/grafana-dashboard.json` covers all four collectors (48 panels)
 plus a DORA overview row: Deployment Frequency and Change Failure Rate for
 both Pipelines and Releases, and Lead Time for Changes computed the DORA
 way — commit to production (`azure_devops_release_lead_time_for_changes_avg_days`),
@@ -464,7 +549,8 @@ the Repos row, in-progress runs and queue time in Pipelines (with a text
 panel explaining why `runs_by_branch_total` — the highest-cardinality
 metric in this exporter — is deliberately *not* graphed by default),
 not-deployed counts and the full lead-time-for-changes percentile spread in
-Releases, and priority/severity/story-points breakdowns in Boards.
+Releases, and priority/severity/story-points breakdowns plus per-team active
+sprint work items, sprint load vs. capacity, and sprint velocity in Boards.
 
 Import it via Grafana's dashboard import (JSON upload or paste); it prompts
 for a Prometheus datasource on import (`DS_PROMETHEUS` input) and exposes

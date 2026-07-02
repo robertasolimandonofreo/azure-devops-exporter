@@ -423,6 +423,140 @@ func TestGetBuildChanges(t *testing.T) {
 	}
 }
 
+func TestListTeams(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/_apis/projects/proj/teams") {
+			t.Errorf("path = %q, want suffix /_apis/projects/proj/teams", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"value": []Team{{ID: "1", Name: "Team A"}, {ID: "2", Name: "Team B"}},
+		})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "org", "token")
+	teams, err := c.ListTeams("proj")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(teams) != 2 {
+		t.Fatalf("got %d teams, want 2", len(teams))
+	}
+}
+
+func TestGetCurrentIteration(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/proj/Team A/_apis/work/teamsettings/iterations") {
+			t.Errorf("path = %q, want suffix /proj/Team A/_apis/work/teamsettings/iterations", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("$timeframe"); got != "current" {
+			t.Errorf("$timeframe = %q, want current", got)
+		}
+		json.NewEncoder(w).Encode(map[string]any{"value": []Iteration{{ID: "iter-1"}}})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "org", "token")
+	iteration, err := c.GetCurrentIteration("proj", "Team A")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if iteration == nil || iteration.ID != "iter-1" {
+		t.Fatalf("got %+v, want iteration iter-1", iteration)
+	}
+}
+
+func TestGetCurrentIteration_NoneConfigured(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"value": []Iteration{}})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "org", "token")
+	iteration, err := c.GetCurrentIteration("proj", "Team A")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if iteration != nil {
+		t.Fatalf("got %+v, want nil", iteration)
+	}
+}
+
+func TestListTeamIterations_Past(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("$timeframe"); got != "past" {
+			t.Errorf("$timeframe = %q, want past", got)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"value": []Iteration{{ID: "iter-p1", Name: "Sprint P1"}, {ID: "iter-p2", Name: "Sprint P2"}},
+		})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "org", "token")
+	iterations, err := c.ListTeamIterations("proj", "Team A", "past")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(iterations) != 2 {
+		t.Fatalf("got %d iterations, want 2", len(iterations))
+	}
+}
+
+func TestGetTeamIterationCapacity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/teamsettings/iterations/iter-1/capacities") {
+			t.Errorf("path = %q, want suffix /teamsettings/iterations/iter-1/capacities", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"teamMembers": []map[string]any{
+				{"activities": []map[string]any{{"capacityPerDay": 4.0}}},
+				{"activities": []map[string]any{{"capacityPerDay": 3.0}, {"capacityPerDay": 1.0}}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "org", "token")
+	capacity, err := c.GetTeamIterationCapacity("proj", "Team A", "iter-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var total float64
+	for _, m := range capacity.TeamMembers {
+		for _, a := range m.Activities {
+			total += a.CapacityPerDay
+		}
+	}
+	if total != 8 {
+		t.Fatalf("got total capacityPerDay %v, want 8", total)
+	}
+}
+
+func TestListIterationWorkItemIDs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/teamsettings/iterations/iter-1/workitems") {
+			t.Errorf("path = %q, want suffix /teamsettings/iterations/iter-1/workitems", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"workItemRelations": []map[string]any{
+				{"target": map[string]any{"id": 1}},
+				{"target": map[string]any{"id": 2}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "org", "token")
+	ids, err := c.ListIterationWorkItemIDs("proj", "Team A", "iter-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 2 || ids[0] != 1 || ids[1] != 2 {
+		t.Fatalf("got %v, want [1 2]", ids)
+	}
+}
+
 func TestGet_RateLimited(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
