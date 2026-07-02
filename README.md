@@ -220,6 +220,8 @@ azure_devops_boards_team_capacity_hours_per_day{organization,project,team}
 azure_devops_boards_sprint_velocity_story_points{organization,project,team,iteration}
 azure_devops_boards_sprint_delivery_total{organization,project,team,iteration,status}
 azure_devops_boards_work_items_by_custom_field_total{organization,project,work_item_type,state,field,value,area_path,iteration_path}
+azure_devops_boards_work_item_story_points{organization,project,work_item_type,state,work_item_id,area_path,iteration_path}
+azure_devops_boards_work_items_blocked_total{organization,project,work_item_type,state,area_path,iteration_path}
 ```
 
 `azure_devops_boards_work_items_by_type` is intentionally not exposed —
@@ -411,6 +413,30 @@ metric in the Boards collector: a field with many distinct values (a
 free-text field misused as a picklist, for instance) multiplies against its
 own area path and iteration path labels — meant for genuinely
 low-cardinality classification fields like "Platform," not free text.
+
+`work_item_story_points` exposes one series per non-removed work item that
+has `Microsoft.VSTS.Scheduling.StoryPoints` set — unlike `story_points_total`
+(which sums by type/state/area/iteration), this is per item and has **no
+Effort fallback**, since it exists specifically to alert on individual items
+against a Story Points scale (e.g. "still open at 13+ points, should have
+been split" — see `AzureDevOpsLargeItemNotSplit` in the Alerts section
+below), which only makes sense against the actual Story Points field, not a
+mix of two different estimation units. Same cardinality reasoning as
+`work_item_age_days`: bounded by `work_items_total`, using `work_item_id`
+instead of title for the same reason.
+
+`work_items_blocked_total` counts work items with a `System.Tags` entry
+matching `"blocked"` case-insensitively (Azure DevOps' own free-text tag
+field — `;`-separated, e.g. `"Blocked; UrgentFix"` — fetched at no extra API
+cost alongside every other fixed field `GetWorkItems` already requests).
+This is purely presence-of-tag; it doesn't attempt to track how long an item
+has been blocked, or distinguish "blocked" from other tags containing that
+word as a substring (an exact, case-insensitive tag match only — `"Blockedish"`
+doesn't count). Since a blocked item is normally not in a terminal state,
+it's already excluded from `sprint_velocity_story_points` and
+`sprint_delivery_total` by their own terminal-state check — this metric
+doesn't change that, it's just visibility into how many blocked items exist
+right now.
 
 ## Metrics (Pipelines)
 
@@ -645,7 +671,7 @@ kubectl create secret generic azure-devops-token \
 helm upgrade --install azure-devops-exporter \
   oci://ghcr.io/robertasolimandonofreo/charts/azure-devops-exporter \
   --namespace monitoring \
-  --version "${CHART_VERSION:-0.1.3}" \
+  --version "${CHART_VERSION:-0.1.4}" \
   -f "${SCRIPT_DIR}/values.yaml" \
   --wait \
   --timeout 5m
@@ -717,7 +743,7 @@ scrape_configs:
 ## Alerts
 
 `alerts/prometheus-rules.yaml` is a `PrometheusRule` (requires Prometheus
-Operator — `kubectl apply -f alerts/prometheus-rules.yaml`), with 10 rules
+Operator — `kubectl apply -f alerts/prometheus-rules.yaml`), with 14 rules
 covering exporter health, Pipelines, Releases, Repos and Boards. Only
 `AzureDevOpsExporterScrapeFailing` uses `increase()`, because
 `azure_devops_exporter_scrape_errors_total` is the one metric here that's a
@@ -735,9 +761,19 @@ fixed threshold; plenty of the metrics below are better suited to a
 dashboard panel than a default alert (e.g. `deployments_not_deployed` is
 often expected behavior, not a problem, so it isn't alerted on).
 
+The last four rules (`AzureDevOpsUnrefinedItemInTodo`,
+`AzureDevOpsLargeItemNotSplit`, `AzureDevOpsWIPLimitExceeded`,
+`AzureDevOpsManyBlockedItems`) are different from the rest: they encode one
+specific team's Story Points and WIP conventions, not anything Azure DevOps
+enforces or this exporter can infer generically. The state names they
+filter on (`"Todo"`, `"In Progress"`), the 13-point split threshold, the WIP
+limit of 5, and the "more than 3 blocked items" threshold are all hardcoded
+to that team's process — treat these four as a template to edit (state
+names, thresholds) or delete, not as defaults that fit every board.
+
 ## Grafana dashboard
 
-`dashboards/grafana-dashboard.json` covers all four collectors (50 panels)
+`dashboards/grafana-dashboard.json` covers all four collectors (52 panels)
 plus a DORA overview row: Deployment Frequency and Change Failure Rate for
 both Pipelines and Releases, and Lead Time for Changes computed the DORA
 way — commit to production (`azure_devops_release_lead_time_for_changes_avg_days`),
@@ -756,8 +792,9 @@ panel explaining why `runs_by_branch_total` — the highest-cardinality
 metric in this exporter — is deliberately *not* graphed by default),
 not-deployed counts and the full lead-time-for-changes percentile spread in
 Releases, and priority/severity/story-points breakdowns plus per-team active
-sprint work items, sprint load vs. capacity, sprint velocity, and on-time/
-late/not-delivered sprint delivery in Boards.
+sprint work items, sprint load vs. capacity, sprint velocity, on-time/
+late/not-delivered sprint delivery, oversized open items and blocked
+items in Boards.
 
 Import it via Grafana's dashboard import (JSON upload or paste); it prompts
 for a Prometheus datasource on import (`DS_PROMETHEUS` input) and exposes

@@ -80,6 +80,7 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 	storyPoints := make(map[typeStateKey]float64)
 	effort := make(map[typeStateKey]float64)
 	byCustomField := make(map[customFieldKey]int)
+	blockedByState := make(map[stateKey]int)
 	now := time.Now()
 	for _, item := range items {
 		f := item.Fields
@@ -91,6 +92,10 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 
 		if !isTerminalState(f.State) && now.Sub(f.ChangedDate) > staleThreshold {
 			staleByType[sKey]++
+		}
+
+		if hasTag(f.Tags, "blocked") {
+			blockedByState[sKey]++
 		}
 
 		if isTerminalState(f.State) && !f.ClosedDate.IsZero() && !f.CreatedDate.IsZero() {
@@ -154,6 +159,8 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 	metrics.BoardsStoryPointsTotal.DeletePartialMatch(labelFilter)
 	metrics.BoardsEffortTotal.DeletePartialMatch(labelFilter)
 	metrics.BoardsWorkItemsByCustomFieldTotal.DeletePartialMatch(labelFilter)
+	metrics.BoardsWorkItemStoryPoints.DeletePartialMatch(labelFilter)
+	metrics.BoardsWorkItemsBlockedTotal.DeletePartialMatch(labelFilter)
 
 	metrics.BoardsWorkItemsTotal.WithLabelValues(organization, project).Set(float64(len(items)))
 	metrics.BoardsWorkItemsCreatedTotal.WithLabelValues(organization, project).Set(float64(created))
@@ -170,6 +177,9 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 	for _, item := range items {
 		ageDays := now.Sub(item.Fields.CreatedDate).Hours() / 24
 		metrics.BoardsWorkItemAgeDays.WithLabelValues(organization, project, item.Fields.WorkItemType, item.Fields.State, assigneeOf(item), strconv.Itoa(item.ID), item.Fields.AreaPath, item.Fields.IterationPath).Set(ageDays)
+		if item.Fields.StoryPoints != nil {
+			metrics.BoardsWorkItemStoryPoints.WithLabelValues(organization, project, item.Fields.WorkItemType, item.Fields.State, strconv.Itoa(item.ID), item.Fields.AreaPath, item.Fields.IterationPath).Set(*item.Fields.StoryPoints)
+		}
 	}
 	for k, days := range leadTimesByKey {
 		sort.Float64s(days)
@@ -202,6 +212,9 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 	}
 	for k, count := range byCustomField {
 		metrics.BoardsWorkItemsByCustomFieldTotal.WithLabelValues(organization, project, k.workItemType, k.state, k.field, k.value, k.areaPath, k.iterationPath).Set(float64(count))
+	}
+	for k, count := range blockedByState {
+		metrics.BoardsWorkItemsBlockedTotal.WithLabelValues(organization, project, k.workItemType, k.state, k.areaPath, k.iterationPath).Set(float64(count))
 	}
 
 	collectTeamMetrics(client, organization, project, items)
@@ -412,4 +425,16 @@ func splitCustomFieldValues(raw string) []string {
 		}
 	}
 	return values
+}
+
+// hasTag reports whether tags (Azure DevOps' own ";"-separated System.Tags value, e.g.
+// "Blocked; UrgentFix") contains want, matched case-insensitively and trimmed the same way
+// splitCustomFieldValues handles multi-value custom fields.
+func hasTag(tags, want string) bool {
+	for _, t := range splitCustomFieldValues(tags) {
+		if strings.EqualFold(t, want) {
+			return true
+		}
+	}
+	return false
 }

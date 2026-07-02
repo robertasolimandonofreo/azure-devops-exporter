@@ -223,6 +223,16 @@ var (
 		Help: "Number of work items in each of a team's last few past sprints, by delivery status: on_time (closed on or before the sprint's end date), late (closed after it), or not_delivered (never closed). See README for exact semantics.",
 	}, []string{"organization", "project", "team", "iteration", "status"})
 
+	BoardsWorkItemStoryPoints = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_work_item_story_points",
+		Help: "Story Points of each non-removed work item that has them set (Microsoft.VSTS.Scheduling.StoryPoints — no Effort fallback, unlike story_points_total). One series per item, meant for a per-item threshold alert (e.g. \"still open above N points, should have been split\") that the aggregated story_points_total can't express. Items without Story Points set contribute no series.",
+	}, []string{"organization", "project", "work_item_type", "state", "work_item_id", "area_path", "iteration_path"})
+
+	BoardsWorkItemsBlockedTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_work_items_blocked_total",
+		Help: "Number of non-removed work items with a \"blocked\" tag (case-insensitive match against System.Tags), by type, state, area path and iteration path.",
+	}, []string{"organization", "project", "work_item_type", "state", "area_path", "iteration_path"})
+
 	// Pipelines domain.
 	PipelinesTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_pipelines_total",
