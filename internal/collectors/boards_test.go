@@ -15,7 +15,9 @@ import (
 // boardsFakeServer serves 5 work items: two active tasks (one assigned, one not, the
 // unassigned one stale), two closed bugs in the same area/iteration (lead times of 50 and 10
 // days, to exercise the lead time aggregation), and a third active task with no area/iteration
-// path set (to exercise the without_iteration/without_area_path metrics).
+// path set (to exercise the without_iteration/without_area_path metrics). It also serves a
+// single team ("Team A") with one current-timeframe iteration whose sprint backlog is items 1
+// and 2, to exercise the active-sprint metric.
 func boardsFakeServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	now := time.Now()
@@ -95,6 +97,15 @@ func boardsFakeServer(t *testing.T) *httptest.Server {
 				}},
 			}
 			json.NewEncoder(w).Encode(map[string]any{"value": items})
+		case strings.Contains(r.URL.Path, "/_apis/projects/") && strings.HasSuffix(r.URL.Path, "/teams"):
+			json.NewEncoder(w).Encode(map[string]any{"value": []map[string]string{{"id": "team-a-id", "name": "Team A"}}})
+		case strings.HasSuffix(r.URL.Path, "/_apis/work/teamsettings/iterations"):
+			json.NewEncoder(w).Encode(map[string]any{"value": []map[string]string{{"id": "iter-1"}}})
+		case strings.HasSuffix(r.URL.Path, "/_apis/work/teamsettings/iterations/iter-1/workitems"):
+			json.NewEncoder(w).Encode(map[string]any{"workItemRelations": []map[string]any{
+				{"target": map[string]any{"id": 1}},
+				{"target": map[string]any{"id": 2}},
+			}})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -208,6 +219,11 @@ func TestCollectBoards(t *testing.T) {
 	// Effort: Bug/Closed = item3(8) + item4(2) = 10.
 	if got := gaugeValue(t, metrics.BoardsEffortTotal, "org", "proj", "Bug", "Closed"); got != 10 {
 		t.Errorf("BoardsEffortTotal[Bug,Closed] = %v, want 10", got)
+	}
+
+	// Team A's current sprint (iter-1) contains items 1 and 2, both Task/Active.
+	if got := gaugeValue(t, metrics.BoardsActiveSprintWorkItemsTotal, "org", "proj", "Team A", "Task", "Active"); got != 2 {
+		t.Errorf("BoardsActiveSprintWorkItemsTotal[Team A,Task,Active] = %v, want 2", got)
 	}
 }
 

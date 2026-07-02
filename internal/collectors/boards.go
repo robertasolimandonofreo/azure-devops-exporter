@@ -161,7 +161,52 @@ func CollectBoards(client *azuredevops.Client, organization, project string) err
 	for k, sum := range effort {
 		metrics.BoardsEffortTotal.WithLabelValues(organization, project, k.workItemType, k.state).Set(sum)
 	}
+
+	collectActiveSprints(client, organization, project, items)
 	return nil
+}
+
+// collectActiveSprints updates the active-sprint metric for every team in the project. It's
+// best-effort per team: a team with no current iteration (most teams that don't run sprints)
+// or a transient API error just contributes no series, rather than failing the whole
+// CollectBoards call over data that's already layered on top of the core work item counts above.
+func collectActiveSprints(client *azuredevops.Client, organization, project string, items []azuredevops.WorkItem) {
+	labelFilter := prometheus.Labels{"organization": organization, "project": project}
+	metrics.BoardsActiveSprintWorkItemsTotal.DeletePartialMatch(labelFilter)
+
+	teams, err := client.ListTeams(project)
+	if err != nil {
+		return
+	}
+
+	itemByID := make(map[int]azuredevops.WorkItem, len(items))
+	for _, item := range items {
+		itemByID[item.ID] = item
+	}
+
+	type teamStateKey struct{ team, workItemType, state string }
+	byTeamState := make(map[teamStateKey]int)
+	for _, team := range teams {
+		iteration, err := client.GetCurrentIteration(project, team.Name)
+		if err != nil || iteration == nil {
+			continue
+		}
+		ids, err := client.ListIterationWorkItemIDs(project, team.Name, iteration.ID)
+		if err != nil {
+			continue
+		}
+		for _, id := range ids {
+			item, ok := itemByID[id]
+			if !ok {
+				continue
+			}
+			byTeamState[teamStateKey{team.Name, item.Fields.WorkItemType, item.Fields.State}]++
+		}
+	}
+
+	for k, count := range byTeamState {
+		metrics.BoardsActiveSprintWorkItemsTotal.WithLabelValues(organization, project, k.team, k.workItemType, k.state).Set(float64(count))
+	}
 }
 
 func average(values []float64) float64 {

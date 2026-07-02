@@ -378,6 +378,71 @@ func (c *Client) ListDeploymentsSince(project string, since time.Time) ([]Deploy
 	return all, nil
 }
 
+// Team is a project team's ID and name.
+type Team struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ListTeams returns all teams in a project.
+func (c *Client) ListTeams(project string) ([]Team, error) {
+	path := fmt.Sprintf("%s/_apis/projects/%s/teams", c.baseURL, url.PathEscape(project))
+	var result struct {
+		Value []Team `json:"value"`
+	}
+	if err := c.get(path, url.Values{"api-version": {apiVersion}}, &result); err != nil {
+		return nil, fmt.Errorf("list teams: %w", err)
+	}
+	return result.Value, nil
+}
+
+// Iteration is a team's sprint/iteration.
+type Iteration struct {
+	ID string `json:"id"`
+}
+
+// GetCurrentIteration returns the team's current-timeframe iteration (its active sprint), or
+// nil if the team has no iteration classified as current — which is the normal case for teams
+// that don't use sprints, not an error.
+func (c *Client) GetCurrentIteration(project, team string) (*Iteration, error) {
+	path := fmt.Sprintf("%s/%s/%s/_apis/work/teamsettings/iterations", c.baseURL, url.PathEscape(project), url.PathEscape(team))
+	query := url.Values{"api-version": {apiVersion}, "$timeframe": {"current"}}
+	var result struct {
+		Value []Iteration `json:"value"`
+	}
+	if err := c.get(path, query, &result); err != nil {
+		return nil, fmt.Errorf("get current iteration: %w", err)
+	}
+	if len(result.Value) == 0 {
+		return nil, nil
+	}
+	return &result.Value[0], nil
+}
+
+// ListIterationWorkItemIDs returns the IDs of work items assigned to a team's iteration (its
+// sprint backlog), via the dedicated iteration work items endpoint — this reflects the team's
+// actual sprint assignment, not a best-effort match against System.IterationPath.
+func (c *Client) ListIterationWorkItemIDs(project, team, iterationID string) ([]int, error) {
+	path := fmt.Sprintf("%s/%s/%s/_apis/work/teamsettings/iterations/%s/workitems", c.baseURL, url.PathEscape(project), url.PathEscape(team), url.PathEscape(iterationID))
+	var result struct {
+		WorkItemRelations []struct {
+			Target struct {
+				ID int `json:"id"`
+			} `json:"target"`
+		} `json:"workItemRelations"`
+	}
+	if err := c.get(path, url.Values{"api-version": {apiVersion}}, &result); err != nil {
+		return nil, fmt.Errorf("list iteration work items: %w", err)
+	}
+	ids := make([]int, 0, len(result.WorkItemRelations))
+	for _, r := range result.WorkItemRelations {
+		if r.Target.ID != 0 {
+			ids = append(ids, r.Target.ID)
+		}
+	}
+	return ids, nil
+}
+
 // WorkItem is a work item's ID and the subset of fields the boards collector needs.
 type WorkItem struct {
 	ID     int `json:"id"`

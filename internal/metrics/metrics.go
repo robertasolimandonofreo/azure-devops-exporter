@@ -193,6 +193,11 @@ var (
 		Help: "Sum of Microsoft.VSTS.Scheduling.Effort by type and state. Work items without this field set (process-template-dependent) don't contribute.",
 	}, []string{"organization", "project", "work_item_type", "state"})
 
+	BoardsActiveSprintWorkItemsTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_active_sprint_work_items_total",
+		Help: "Number of work items in each team's current sprint, by team, type and state. Teams with no current iteration contribute no series.",
+	}, []string{"organization", "project", "team", "work_item_type", "state"})
+
 	// Pipelines domain.
 	PipelinesTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_pipelines_total",

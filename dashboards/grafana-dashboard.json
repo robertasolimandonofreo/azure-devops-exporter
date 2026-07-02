@@ -1202,6 +1202,28 @@
         "x": 16,
         "y": 104
       }
+    },
+    {
+      "type": "bargauge",
+      "title": "Active sprint work items by team",
+      "description": "Per team current-sprint backlog, by type and state. Teams with no current iteration have no series.",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_boards_active_sprint_work_items_total{organization=~\"$organization\", project=~\"$project\"}) by (team, work_item_type, state)",
+          "legendFormat": "{{team}} \u2014 {{work_item_type}} ({{state}})"
+        }
+      ],
+      "id": 159,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 111
+      }
     }
   ]
 }
