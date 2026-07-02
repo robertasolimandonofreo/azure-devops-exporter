@@ -111,24 +111,28 @@ func boardsFakeServer(t *testing.T) *httptest.Server {
 		case strings.Contains(r.URL.Path, "/_apis/projects/") && strings.HasSuffix(r.URL.Path, "/teams"):
 			json.NewEncoder(w).Encode(map[string]any{"value": []map[string]string{{"id": "team-a-id", "name": "Team A"}}})
 		case strings.HasSuffix(r.URL.Path, "/_apis/work/teamsettings/iterations"):
-			switch r.URL.Query().Get("$timeframe") {
-			case "current":
-				json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{{"id": "iter-1", "name": "Sprint 1"}}})
-			case "past":
-				// Deliberately out of chronological order, to exercise the collector's own sort.
-				json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{
-					{"id": "iter-p2", "name": "Sprint P2", "attributes": map[string]any{
-						"startDate":  now.Add(-30 * 24 * time.Hour).Format(time.RFC3339),
-						"finishDate": now.Add(-22 * 24 * time.Hour).Format(time.RFC3339),
-					}},
-					{"id": "iter-p1", "name": "Sprint P1", "attributes": map[string]any{
-						"startDate":  now.Add(-57 * 24 * time.Hour).Format(time.RFC3339),
-						"finishDate": now.Add(-43 * 24 * time.Hour).Format(time.RFC3339),
-					}},
-				}})
-			default:
-				w.WriteHeader(http.StatusNotFound)
+			// Azure DevOps' $timeframe query parameter only accepts "current" server-side (any
+			// other value errors), so ListTeamIterations never sends it — this always returns
+			// every iteration in one response, and the client filters by attributes.timeFrame
+			// itself. Iterations are deliberately out of chronological order, to exercise the
+			// collector's own sort.
+			if got := r.URL.Query().Get("$timeframe"); got != "" {
+				w.WriteHeader(http.StatusBadRequest)
+				return
 			}
+			json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{
+				{"id": "iter-1", "name": "Sprint 1", "attributes": map[string]any{"timeFrame": "current"}},
+				{"id": "iter-p2", "name": "Sprint P2", "attributes": map[string]any{
+					"startDate":  now.Add(-30 * 24 * time.Hour).Format(time.RFC3339),
+					"finishDate": now.Add(-22 * 24 * time.Hour).Format(time.RFC3339),
+					"timeFrame":  "past",
+				}},
+				{"id": "iter-p1", "name": "Sprint P1", "attributes": map[string]any{
+					"startDate":  now.Add(-57 * 24 * time.Hour).Format(time.RFC3339),
+					"finishDate": now.Add(-43 * 24 * time.Hour).Format(time.RFC3339),
+					"timeFrame":  "past",
+				}},
+			}})
 		case strings.HasSuffix(r.URL.Path, "/_apis/work/teamsettings/iterations/iter-1/workitems"):
 			json.NewEncoder(w).Encode(map[string]any{"workItemRelations": []map[string]any{
 				{"target": map[string]any{"id": 1}},
