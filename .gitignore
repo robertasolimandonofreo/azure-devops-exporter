@@ -1,2 +1,4 @@
 .env
 .claude
+charts/azure-devops-exporter/values-*.yaml
+!charts/azure-devops-exporter/values-*.example.yaml

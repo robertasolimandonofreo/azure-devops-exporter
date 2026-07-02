@@ -16,7 +16,9 @@ spec:
     spec:
       containers:
         - name: azure-devops-exporter
-          image: azure-devops-exporter:latest
+          # Published by .github/workflows/docker-publish.yml on every push to main. Pin to a
+          # specific tag (git SHA or "vX.Y.Z" release) instead of "latest" for production.
+          image: ghcr.io/robertasolimandonofreo/azure-devops-exporter:latest
           ports:
             - name: metrics
               containerPort: 8080

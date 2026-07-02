@@ -1,0 +1,30 @@
+# Example values file for the indecxops org's EDP deployment.
+# Copy this to values-edp.yaml (gitignored, since it's environment-specific), fill in the
+# blanks below, and install/upgrade with:
+#
+#   kubectl create secret generic azure-devops-token \
+#     --from-literal=AZURE_DEVOPS_TOKEN=<your-token>
+#   helm install azure-devops-exporter charts/azure-devops-exporter -f values-edp.yaml
+#
+# The token is deliberately not set here — see azureDevOps.existingSecret below.
+
+image:
+  repository: ghcr.io/robertasolimandonofreo/azure-devops-exporter
+  tag: latest
+
+azureDevOps:
+  organization: "indecxops"
+  # EDP scrapes Repos + Boards; indecx-hub only scrapes Pipelines + Releases — see README's
+  # "Per-project collector selection" section.
+  projects: "EDP:repos+boards,indecx-hub:pipelines+releases"
+  # Custom.EDPPlataform / Custom.EDPLabels are EDP's actual field reference names — see
+  # README's "Custom fields (Boards)" section for how these were found (they don't match
+  # their display names, "Plataform" and "Labels").
+  boardsCustomFields: "Custom.EDPPlataform:platform,Custom.EDPLabels:labels"
+  # Created out-of-band with `kubectl create secret generic ...` above, instead of putting
+  # the token in this file.
+  existingSecret: "azure-devops-token"
+
+# Requires the Prometheus Operator CRDs. Set to false if the cluster doesn't have them.
+serviceMonitor:
+  enabled: true

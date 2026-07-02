@@ -541,6 +541,29 @@ Or with `docker-compose` (reads the same variables from your shell or a `.env` f
 docker compose up --build
 ```
 
+## Container image
+
+`.github/workflows/docker-publish.yml` builds and publishes the image to
+GitHub Container Registry on every push to `main` (tag `latest`) and on
+`vX.Y.Z` git tags (semver tags: `1.2.3`, `1.2`, `1`) — no separate registry
+account or secret needed, it authenticates with the repo's own
+`GITHUB_TOKEN`. Both `manifests/deployment.yaml` and the Helm chart's
+`values.yaml` default to `ghcr.io/robertasolimandonofreo/azure-devops-exporter`.
+
+The first image a repo publishes to GHCR is **private by default** — go to
+the package's settings on GitHub (org → Packages → azure-devops-exporter →
+Package settings → Danger Zone) and change visibility to public, or link it
+to this repository so it inherits the repo's visibility, otherwise
+`kubectl`/Helm will fail to pull it with `ImagePullBackOff` from outside the
+org. If you're deploying from a fork or want your own registry instead,
+override `image.repository`/`image.tag` (Helm) or edit the `image:` line
+directly (raw manifests) and build/push it yourself:
+
+```bash
+docker build -t <your-registry>/azure-devops-exporter:latest .
+docker push <your-registry>/azure-devops-exporter:latest
+```
+
 ## Running in Kubernetes
 
 ```bash
@@ -565,6 +588,21 @@ helm install azure-devops-exporter charts/azure-devops-exporter \
   --set azureDevOps.projects=proj-a\,proj-b \
   --set azureDevOps.token=my-token
 ```
+
+For anything beyond a quick smoke test, a values file is easier to manage
+than a wall of `--set` flags — `charts/azure-devops-exporter/values-edp.example.yaml`
+is a real filled-in example (organization, per-project collectors, custom
+fields) to copy from:
+
+```bash
+cp charts/azure-devops-exporter/values-edp.example.yaml charts/azure-devops-exporter/values-mine.yaml
+# edit values-mine.yaml, then:
+helm install azure-devops-exporter charts/azure-devops-exporter -f charts/azure-devops-exporter/values-mine.yaml
+```
+
+`values-*.yaml` under the chart directory is gitignored (except
+`*.example.yaml` files) so an environment-specific copy doesn't get
+committed by accident.
 
 To use a token you already store in a Secret instead of letting the chart
 create one, set `azureDevOps.existingSecret=<name>` (that Secret must have an

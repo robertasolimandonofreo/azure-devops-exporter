@@ -1,7 +1,9 @@
 replicaCount: 1
 
 image:
-  repository: azure-devops-exporter
+  # Published by .github/workflows/docker-publish.yml on every push to main (tag "latest")
+  # and on "vX.Y.Z" git tags (semver tags). Override for a fork or a different registry.
+  repository: ghcr.io/robertasolimandonofreo/azure-devops-exporter
   tag: latest
   pullPolicy: IfNotPresent
 
