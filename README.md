@@ -150,11 +150,26 @@ team's actual sprint backlog rather than a best-effort match against
 `System.IterationPath`, since that path alone doesn't indicate which
 iteration is *current* for a given team). Type/state for each item come from
 the same work item fetch already done for the rest of this collector — no
-extra per-item API calls. This costs two extra API calls per team per scrape
-(current iteration, then its work items); a team with no iteration marked
-current — the common case for teams that don't run sprints — or a
-per-team API error just contributes no series for that team, rather than
-failing the whole `CollectBoards` call.
+extra per-item API calls. A team with no iteration marked current — the
+common case for teams that don't run sprints — or a per-team API error just
+contributes no series for that team, rather than failing the whole
+`CollectBoards` call.
+
+**API call cost.** Per scrape, this adds `1 + N + M` calls on top of the rest
+of the Boards collector, where `N` is the number of teams in the project
+(`ListTeams`, once, plus one `GetCurrentIteration` call per team) and `M ≤ N`
+is the number of teams that actually have a current iteration (one
+`ListIterationWorkItemIDs` call each — teams with no current sprint skip this
+call entirely). For a project with 10 teams, 8 of which run sprints, that's
+`1 + 10 + 8 = 19` extra calls every scrape — at the default 5-minute
+`SCRAPE_INTERVAL_SECONDS`, ~5,472 calls/day. This is added to, not multiplied
+with, the rest of the collector's cost: 3 WIQL queries (all work items,
+created-since, closed-since) plus one `workitemsbatch` call per 200 work
+items, regardless of team count. Unlike the Releases collector's lead-time
+lookups, there's no cache here — iteration membership can change between
+scrapes (items move in/out of the sprint), so it's re-fetched every time.
+If a project has many teams and this becomes a noticeable share of API
+budget, the cheapest mitigation is raising `SCRAPE_INTERVAL_SECONDS`.
 
 `created_total` and `closed_total` are gauges, not Prometheus counters,
 despite the `_total` suffix from the original spec: the exporter keeps no
