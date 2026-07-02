@@ -198,27 +198,28 @@ transient API error.
 ```text
 azure_devops_boards_work_items_total{organization,project}
 azure_devops_boards_work_items_by_state{organization,project,work_item_type,state,area_path,iteration_path}
-azure_devops_boards_work_items_by_assignee{organization,project,assigned_to}
+azure_devops_boards_work_items_by_assignee{organization,project,assigned_to,area_path,iteration_path}
 azure_devops_boards_work_items_created_total{organization,project}
 azure_devops_boards_work_items_closed_total{organization,project}
-azure_devops_boards_work_item_age_days{organization,project,work_item_type,state,assigned_to,work_item_id}
-azure_devops_boards_work_items_stale_total{organization,project,work_item_type,state}
+azure_devops_boards_work_item_age_days{organization,project,work_item_type,state,assigned_to,work_item_id,area_path,iteration_path}
+azure_devops_boards_work_items_stale_total{organization,project,work_item_type,state,area_path,iteration_path}
 azure_devops_boards_lead_time_avg_days{organization,project,work_item_type,area_path,iteration_path}
 azure_devops_boards_lead_time_p50_days{organization,project,work_item_type,area_path,iteration_path}
 azure_devops_boards_lead_time_p90_days{organization,project,work_item_type,area_path,iteration_path}
 azure_devops_boards_lead_time_max_days{organization,project,work_item_type,area_path,iteration_path}
-azure_devops_boards_work_items_by_priority{organization,project,work_item_type,priority}
-azure_devops_boards_bugs_by_severity{organization,project,severity}
-azure_devops_boards_work_items_without_estimate_total{organization,project,work_item_type,state}
+azure_devops_boards_work_items_by_priority{organization,project,work_item_type,priority,area_path,iteration_path}
+azure_devops_boards_bugs_by_severity{organization,project,severity,area_path,iteration_path}
+azure_devops_boards_work_items_without_estimate_total{organization,project,work_item_type,state,area_path,iteration_path}
 azure_devops_boards_work_items_without_iteration_total{organization,project,work_item_type}
 azure_devops_boards_work_items_without_area_path_total{organization,project,work_item_type}
-azure_devops_boards_story_points_total{organization,project,work_item_type,state}
-azure_devops_boards_effort_total{organization,project,work_item_type,state}
+azure_devops_boards_story_points_total{organization,project,work_item_type,state,area_path,iteration_path}
+azure_devops_boards_effort_total{organization,project,work_item_type,state,area_path,iteration_path}
 azure_devops_boards_active_sprint_work_items_total{organization,project,team,work_item_type,state}
 azure_devops_boards_active_sprint_story_points_total{organization,project,team}
 azure_devops_boards_team_capacity_hours_per_day{organization,project,team}
 azure_devops_boards_sprint_velocity_story_points{organization,project,team,iteration}
-azure_devops_boards_work_items_by_custom_field_total{organization,project,work_item_type,state,field,value}
+azure_devops_boards_sprint_delivery_total{organization,project,team,iteration,status}
+azure_devops_boards_work_items_by_custom_field_total{organization,project,work_item_type,state,field,value,area_path,iteration_path}
 ```
 
 `azure_devops_boards_work_items_by_type` is intentionally not exposed —
@@ -226,9 +227,25 @@ azure_devops_boards_work_items_by_custom_field_total{organization,project,work_i
 `state`/`area_path`/`iteration_path` in a Prometheus query instead of
 duplicating the data.
 
-`area_path` and `iteration_path` add real cardinality (they grow with the
-number of teams and sprints in the project) — if that becomes a problem,
-drop them from `work_items_by_state` first.
+**`area_path` and `iteration_path` are on almost every Boards metric** (all
+except the two `_without_*_total` metrics, where an iteration/area label
+would contradict what they're counting, and the project-wide totals/rates
+— `work_items_total`, `created_total`, `closed_total` — which are meant to
+stay a single number per project). This adds real cardinality (it grows
+with the number of teams and sprints in the project, multiplied across
+every metric that carries it) — if that becomes a problem for your
+Prometheus/Grafana setup, the cheapest place to start trimming is the
+metrics you don't actually slice by sprint in a dashboard, since dropping
+the labels there doesn't touch the ones (like `work_items_by_state` and the
+`lead_time_*` family) where iteration/area was already load-bearing before
+this.
+
+`work_items_by_assignee` now also carries area path and iteration path — an
+assignee who has items in more than one area/iteration shows up as one
+series per combination instead of a single total, so a query needs
+`sum(...) by (assigned_to)` to get back a per-person total across every
+sprint/area, the same way `sum(...) by (work_item_type, state)` already
+does for `work_items_by_state`.
 
 `active_sprint_work_items_total` counts, per team, the work items in that
 team's current sprint. Teams are auto-discovered via the Teams API — no
@@ -273,13 +290,37 @@ unspecified order, so the collector sorts them by `startDate` before taking
 the most recent 5; a team with fewer than 5 past sprints just gets fewer
 series, not zero-padded ones.
 
+`sprint_delivery_total` answers "did we deliver what we committed to for
+this sprint": for the same last-5-past-sprints window as velocity (and from
+the same per-iteration work item fetch — computing it costs nothing beyond
+what velocity already fetches), every work item in a sprint's backlog is
+classified into exactly one of three `status` values:
+
+- `on_time` — closed on or before the iteration's own `finishDate`
+- `late` — closed, but after the iteration's `finishDate`
+- `not_delivered` — never reached a terminal state at all, even though the
+  sprint is over
+
+A useful "delivered as planned" ratio in Grafana:
+`sum(sprint_delivery_total{status="on_time"}) / sum(sprint_delivery_total)`.
+Two things worth knowing about what this does and doesn't capture: it goes
+purely off whichever iteration `ListIterationWorkItemIDs` currently
+associates the item with, so an item moved between sprints after the fact
+is judged against its *current* sprint assignment, not whatever sprint it
+was originally committed to — Azure DevOps doesn't expose that history
+without a revision-history API call per item, which this collector avoids
+for the same cost reasons documented for Cycle Time below. And an iteration
+with no `finishDate` on record (unusual, but not impossible) contributes no
+series at all for that sprint, rather than guessing.
+
 **API call cost.** Per scrape, on top of the rest of the Boards collector,
-these four metrics together cost `1` (`ListTeams`, once) plus, per team:
+these five metrics together cost `1` (`ListTeams`, once) plus, per team:
 `GetCurrentIteration` (1) + `ListTeamIterations` for past sprints (1),
 plus **2 more** (`ListIterationWorkItemIDs` + `GetTeamIterationCapacity`) if
 the team has a current sprint, plus **up to 5 more**
-(`ListIterationWorkItemIDs`, one per past sprint used for velocity) if the
-team has that much sprint history. Worst case that's `1 + 9` calls per team.
+(`ListIterationWorkItemIDs`, one per past sprint, shared by velocity and
+delivery — no extra calls for delivery specifically) if the team has that
+much sprint history. Worst case that's `1 + 9` calls per team.
 For a project with 10 teams that all run sprints and have a full 5-sprint
 history, that's `1 + 9×10 = 91` extra calls every scrape — at the default
 5-minute `SCRAPE_INTERVAL_SECONDS`, ~26,200 calls/day. A more typical mix
@@ -313,10 +354,11 @@ window.
 `work_item_age_days` exposes one series per non-removed work item (age since
 `System.CreatedDate`), using `work_item_id` instead of the item's title to
 identify it — a title label would be high-cardinality free text, an ID is
-bounded by `work_items_total`. `work_items_stale_total` counts, per type and
-state, non-closed work items whose `System.ChangedDate` is more than 14 days
-old (`staleThreshold` in `internal/collectors/boards.go`); this threshold is
-a fixed constant, not configurable yet.
+bounded by `work_items_total`. `work_items_stale_total` counts, per type,
+state, area path and iteration path, non-closed work items whose
+`System.ChangedDate` is more than 14 days old (`staleThreshold` in
+`internal/collectors/boards.go`); this threshold is a fixed constant, not
+configurable yet.
 
 Lead time (`Microsoft.VSTS.Common.ClosedDate` minus `System.CreatedDate`) is
 exposed pre-aggregated (avg/p50/p90/max per `work_item_type`/`area_path`/
@@ -337,15 +379,17 @@ scrape.
 `Microsoft.VSTS.Common.Priority`/`Severity` fields already fetched with every
 work item — no new API calls. Items with priority `0` (unset) are excluded
 from `by_priority`; severity is only tallied for `Bug` work items, and items
-without one set are excluded from `bugs_by_severity`.
+without one set are excluded from `bugs_by_severity`. Both also carry area
+path and iteration path.
 
 `work_items_without_estimate_total` counts items with neither
-`Microsoft.VSTS.Scheduling.StoryPoints` nor `...Effort` set. `story_points_total`
-and `effort_total` sum whichever of those two fields each work item actually
-has — which field a process template uses (Story Points, Effort, or neither)
-varies, so treat these as informative rather than authoritative capacity
-numbers, and expect one or both to be all-zero on a project that doesn't use
-either field.
+`Microsoft.VSTS.Scheduling.StoryPoints` nor `...Effort` set, by type, state,
+area path and iteration path. `story_points_total` and `effort_total` sum
+whichever of those two fields each work item actually has, by the same
+labels — which field a process template uses (Story Points, Effort, or
+neither) varies, so treat these as informative rather than authoritative
+capacity numbers, and expect one or both to be all-zero on a project that
+doesn't use either field.
 
 `work_items_without_iteration_total` and `..._without_area_path_total` count
 items with a literally empty `System.IterationPath`/`AreaPath`. In practice
@@ -362,11 +406,11 @@ already makes for every other Boards metric, so the added cost is a few
 extra bytes per request/response, not extra round trips. `field` is the
 configured label (or the raw reference name if no label override was
 given); `value` is the field's value, stringified as described above, with
-unset values bucketed under `value="unset"`. A field with many distinct
-values (a free-text field misused as a picklist, for instance) adds real
-cardinality here, same caveat as `area_path`/`iteration_path` on
-`work_items_by_state` — this is meant for genuinely low-cardinality
-classification fields like "Platform," not free text.
+unset values bucketed under `value="unset"`. This is the highest-cardinality
+metric in the Boards collector: a field with many distinct values (a
+free-text field misused as a picklist, for instance) multiplies against its
+own area path and iteration path labels — meant for genuinely
+low-cardinality classification fields like "Platform," not free text.
 
 ## Metrics (Pipelines)
 
@@ -601,7 +645,7 @@ kubectl create secret generic azure-devops-token \
 helm upgrade --install azure-devops-exporter \
   oci://ghcr.io/robertasolimandonofreo/charts/azure-devops-exporter \
   --namespace monitoring \
-  --version "${CHART_VERSION:-0.1.1}" \
+  --version "${CHART_VERSION:-0.1.2}" \
   -f "${SCRIPT_DIR}/values.yaml" \
   --wait \
   --timeout 5m
@@ -693,7 +737,7 @@ often expected behavior, not a problem, so it isn't alerted on).
 
 ## Grafana dashboard
 
-`dashboards/grafana-dashboard.json` covers all four collectors (49 panels)
+`dashboards/grafana-dashboard.json` covers all four collectors (50 panels)
 plus a DORA overview row: Deployment Frequency and Change Failure Rate for
 both Pipelines and Releases, and Lead Time for Changes computed the DORA
 way — commit to production (`azure_devops_release_lead_time_for_changes_avg_days`),
@@ -712,7 +756,8 @@ panel explaining why `runs_by_branch_total` — the highest-cardinality
 metric in this exporter — is deliberately *not* graphed by default),
 not-deployed counts and the full lead-time-for-changes percentile spread in
 Releases, and priority/severity/story-points breakdowns plus per-team active
-sprint work items, sprint load vs. capacity, and sprint velocity in Boards.
+sprint work items, sprint load vs. capacity, sprint velocity, and on-time/
+late/not-delivered sprint delivery in Boards.
 
 Import it via Grafana's dashboard import (JSON upload or paste); it prompts
 for a Prometheus datasource on import (`DS_PROMETHEUS` input) and exposes

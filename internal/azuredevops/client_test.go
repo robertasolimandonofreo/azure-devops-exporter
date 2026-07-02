@@ -553,7 +553,13 @@ func TestListTeamIterations_Past(t *testing.T) {
 			t.Errorf("$timeframe = %q, want past", got)
 		}
 		json.NewEncoder(w).Encode(map[string]any{
-			"value": []Iteration{{ID: "iter-p1", Name: "Sprint P1"}, {ID: "iter-p2", Name: "Sprint P2"}},
+			"value": []map[string]any{
+				{"id": "iter-p1", "name": "Sprint P1", "attributes": map[string]any{
+					"startDate":  "2026-06-01T00:00:00Z",
+					"finishDate": "2026-06-14T00:00:00Z",
+				}},
+				{"id": "iter-p2", "name": "Sprint P2"},
+			},
 		})
 	}))
 	defer server.Close()
@@ -565,6 +571,10 @@ func TestListTeamIterations_Past(t *testing.T) {
 	}
 	if len(iterations) != 2 {
 		t.Fatalf("got %d iterations, want 2", len(iterations))
+	}
+	want := time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)
+	if !iterations[0].Attributes.FinishDate.Equal(want) {
+		t.Errorf("iterations[0].Attributes.FinishDate = %v, want %v", iterations[0].Attributes.FinishDate, want)
 	}
 }
 

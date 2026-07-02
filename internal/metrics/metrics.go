@@ -113,8 +113,8 @@ var (
 
 	BoardsWorkItemsByAssignee = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_work_items_by_assignee",
-		Help: "Number of work items by assignee.",
-	}, []string{"organization", "project", "assigned_to"})
+		Help: "Number of work items by assignee, area path and iteration path.",
+	}, []string{"organization", "project", "assigned_to", "area_path", "iteration_path"})
 
 	BoardsWorkItemsCreatedTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_work_items_created_total",
@@ -129,12 +129,12 @@ var (
 	BoardsWorkItemAgeDays = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_work_item_age_days",
 		Help: "Age in days since creation of each work item.",
-	}, []string{"organization", "project", "work_item_type", "state", "assigned_to", "work_item_id"})
+	}, []string{"organization", "project", "work_item_type", "state", "assigned_to", "work_item_id", "area_path", "iteration_path"})
 
 	BoardsWorkItemsStaleTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_work_items_stale_total",
-		Help: "Number of non-closed work items with no field changes recently — see README for the threshold.",
-	}, []string{"organization", "project", "work_item_type", "state"})
+		Help: "Number of non-closed work items with no field changes recently, by type, state, area path and iteration path — see README for the staleness threshold.",
+	}, []string{"organization", "project", "work_item_type", "state", "area_path", "iteration_path"})
 
 	leadTimeLabels = []string{"organization", "project", "work_item_type", "area_path", "iteration_path"}
 
@@ -160,18 +160,18 @@ var (
 
 	BoardsWorkItemsByPriority = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_work_items_by_priority",
-		Help: "Number of work items by type and priority. Items with no priority set are excluded.",
-	}, []string{"organization", "project", "work_item_type", "priority"})
+		Help: "Number of work items by type, priority, area path and iteration path. Items with no priority set are excluded.",
+	}, []string{"organization", "project", "work_item_type", "priority", "area_path", "iteration_path"})
 
 	BoardsBugsBySeverity = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_bugs_by_severity",
-		Help: "Number of Bug work items by severity. Bugs with no severity set are excluded.",
-	}, []string{"organization", "project", "severity"})
+		Help: "Number of Bug work items by severity, area path and iteration path. Bugs with no severity set are excluded.",
+	}, []string{"organization", "project", "severity", "area_path", "iteration_path"})
 
 	BoardsWorkItemsWithoutEstimateTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_work_items_without_estimate_total",
-		Help: "Number of work items with neither Story Points nor Effort set, by type and state.",
-	}, []string{"organization", "project", "work_item_type", "state"})
+		Help: "Number of work items with neither Story Points nor Effort set, by type, state, area path and iteration path.",
+	}, []string{"organization", "project", "work_item_type", "state", "area_path", "iteration_path"})
 
 	BoardsWorkItemsWithoutIterationTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_work_items_without_iteration_total",
@@ -185,13 +185,13 @@ var (
 
 	BoardsStoryPointsTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_story_points_total",
-		Help: "Sum of Microsoft.VSTS.Scheduling.StoryPoints by type and state. Work items without this field set (process-template-dependent) don't contribute.",
-	}, []string{"organization", "project", "work_item_type", "state"})
+		Help: "Sum of Microsoft.VSTS.Scheduling.StoryPoints by type, state, area path and iteration path. Work items without this field set (process-template-dependent) don't contribute.",
+	}, []string{"organization", "project", "work_item_type", "state", "area_path", "iteration_path"})
 
 	BoardsEffortTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_effort_total",
-		Help: "Sum of Microsoft.VSTS.Scheduling.Effort by type and state. Work items without this field set (process-template-dependent) don't contribute.",
-	}, []string{"organization", "project", "work_item_type", "state"})
+		Help: "Sum of Microsoft.VSTS.Scheduling.Effort by type, state, area path and iteration path. Work items without this field set (process-template-dependent) don't contribute.",
+	}, []string{"organization", "project", "work_item_type", "state", "area_path", "iteration_path"})
 
 	BoardsActiveSprintWorkItemsTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_active_sprint_work_items_total",
@@ -215,8 +215,13 @@ var (
 
 	BoardsWorkItemsByCustomFieldTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_boards_work_items_by_custom_field_total",
-		Help: "Number of work items by type, state and configured custom field value. Only populated for fields listed in AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS — see README. Items where the field is unset are counted under value=\"unset\"; a multi-select field's \";\"-separated values are split, so one item can count under more than one value.",
-	}, []string{"organization", "project", "work_item_type", "state", "field", "value"})
+		Help: "Number of work items by type, state, area path, iteration path and configured custom field value. Only populated for fields listed in AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS — see README. Items where the field is unset are counted under value=\"unset\"; a multi-select field's \";\"-separated values are split, so one item can count under more than one value.",
+	}, []string{"organization", "project", "work_item_type", "state", "field", "value", "area_path", "iteration_path"})
+
+	BoardsSprintDeliveryTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_sprint_delivery_total",
+		Help: "Number of work items in each of a team's last few past sprints, by delivery status: on_time (closed on or before the sprint's end date), late (closed after it), or not_delivered (never closed). See README for exact semantics.",
+	}, []string{"organization", "project", "team", "iteration", "status"})
 
 	// Pipelines domain.
 	PipelinesTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{

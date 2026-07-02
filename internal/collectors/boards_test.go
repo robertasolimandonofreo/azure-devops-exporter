@@ -23,7 +23,10 @@ import (
 // P1" backlog: item 3; "Sprint P2" backlog: items 2 and 4 — item 2 is still Active, so it must
 // be excluded from velocity, while item 4 has no Story Points and exercises the Effort
 // fallback), exercising the velocity metric and its sort-by-start-date behavior (the server
-// deliberately returns them out of chronological order).
+// deliberately returns them out of chronological order). Sprint P1's date range (start -57d,
+// finish -43d) fully contains item 3's ClosedDate (-50d), exercising the on_time delivery
+// bucket; Sprint P2's date range (start -30d, finish -22d) ends before item 4's ClosedDate
+// (-20d), exercising the late bucket, while item 2 (still Active) exercises not_delivered.
 func boardsFakeServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	now := time.Now()
@@ -114,8 +117,14 @@ func boardsFakeServer(t *testing.T) *httptest.Server {
 			case "past":
 				// Deliberately out of chronological order, to exercise the collector's own sort.
 				json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{
-					{"id": "iter-p2", "name": "Sprint P2", "attributes": map[string]any{"startDate": now.Add(-10 * 24 * time.Hour).Format(time.RFC3339)}},
-					{"id": "iter-p1", "name": "Sprint P1", "attributes": map[string]any{"startDate": now.Add(-24 * 24 * time.Hour).Format(time.RFC3339)}},
+					{"id": "iter-p2", "name": "Sprint P2", "attributes": map[string]any{
+						"startDate":  now.Add(-30 * 24 * time.Hour).Format(time.RFC3339),
+						"finishDate": now.Add(-22 * 24 * time.Hour).Format(time.RFC3339),
+					}},
+					{"id": "iter-p1", "name": "Sprint P1", "attributes": map[string]any{
+						"startDate":  now.Add(-57 * 24 * time.Hour).Format(time.RFC3339),
+						"finishDate": now.Add(-43 * 24 * time.Hour).Format(time.RFC3339),
+					}},
 				}})
 			default:
 				w.WriteHeader(http.StatusNotFound)
@@ -164,11 +173,22 @@ func TestCollectBoards(t *testing.T) {
 	if got := gaugeValue(t, metrics.BoardsWorkItemsByState, "org", "proj", "Bug", "Closed", "proj\\TeamB", "proj\\Sprint 2"); got != 2 {
 		t.Errorf("BoardsWorkItemsByState[Bug,Closed] = %v, want 2", got)
 	}
-	if got := gaugeValue(t, metrics.BoardsWorkItemsByAssignee, "org", "proj", "Alice"); got != 2 {
-		t.Errorf("BoardsWorkItemsByAssignee[Alice] = %v, want 2", got)
+	// Alice is assigned to item1 (TeamA/Sprint1) and item3 (TeamB/Sprint2) — different
+	// area/iteration paths, so they land in separate series, not a combined Alice=2.
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByAssignee, "org", "proj", "Alice", "proj\\TeamA", "proj\\Sprint 1"); got != 1 {
+		t.Errorf("BoardsWorkItemsByAssignee[Alice,TeamA,Sprint1] = %v, want 1", got)
 	}
-	if got := gaugeValue(t, metrics.BoardsWorkItemsByAssignee, "org", "proj", unassigned); got != 3 {
-		t.Errorf("BoardsWorkItemsByAssignee[unassigned] = %v, want 3", got)
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByAssignee, "org", "proj", "Alice", "proj\\TeamB", "proj\\Sprint 2"); got != 1 {
+		t.Errorf("BoardsWorkItemsByAssignee[Alice,TeamB,Sprint2] = %v, want 1", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByAssignee, "org", "proj", unassigned, "proj\\TeamA", "proj\\Sprint 1"); got != 1 {
+		t.Errorf("BoardsWorkItemsByAssignee[unassigned,TeamA,Sprint1] = %v, want 1", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByAssignee, "org", "proj", unassigned, "proj\\TeamB", "proj\\Sprint 2"); got != 1 {
+		t.Errorf("BoardsWorkItemsByAssignee[unassigned,TeamB,Sprint2] = %v, want 1", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByAssignee, "org", "proj", unassigned, "", ""); got != 1 {
+		t.Errorf("BoardsWorkItemsByAssignee[unassigned,\"\",\"\"] = %v, want 1", got)
 	}
 	if got := gaugeValue(t, metrics.BoardsWorkItemsCreatedTotal, "org", "proj"); got != 1 {
 		t.Errorf("BoardsWorkItemsCreatedTotal = %v, want 1", got)
@@ -176,20 +196,20 @@ func TestCollectBoards(t *testing.T) {
 	if got := gaugeValue(t, metrics.BoardsWorkItemsClosedTotal, "org", "proj"); got != 1 {
 		t.Errorf("BoardsWorkItemsClosedTotal = %v, want 1", got)
 	}
-	if got := gaugeValue(t, metrics.BoardsWorkItemAgeDays, "org", "proj", "Task", "Active", "Alice", "1"); got < 4.9 || got > 5.1 {
+	if got := gaugeValue(t, metrics.BoardsWorkItemAgeDays, "org", "proj", "Task", "Active", "Alice", "1", "proj\\TeamA", "proj\\Sprint 1"); got < 4.9 || got > 5.1 {
 		t.Errorf("BoardsWorkItemAgeDays[1] = %v, want ~5", got)
 	}
-	if got := gaugeValue(t, metrics.BoardsWorkItemAgeDays, "org", "proj", "Bug", "Closed", "Alice", "3"); got < 99.9 || got > 100.1 {
+	if got := gaugeValue(t, metrics.BoardsWorkItemAgeDays, "org", "proj", "Bug", "Closed", "Alice", "3", "proj\\TeamB", "proj\\Sprint 2"); got < 99.9 || got > 100.1 {
 		t.Errorf("BoardsWorkItemAgeDays[3] = %v, want ~100", got)
 	}
 	// Item 1 changed 1 day ago (fresh) and item 2 changed 20 days ago (stale); both are
-	// Task/Active, so the stale count for that state should only include item 2.
-	if got := gaugeValue(t, metrics.BoardsWorkItemsStaleTotal, "org", "proj", "Task", "Active"); got != 1 {
+	// Task/Active/TeamA/Sprint1, so the stale count for that state should only include item 2.
+	if got := gaugeValue(t, metrics.BoardsWorkItemsStaleTotal, "org", "proj", "Task", "Active", "proj\\TeamA", "proj\\Sprint 1"); got != 1 {
 		t.Errorf("BoardsWorkItemsStaleTotal[Task,Active] = %v, want 1", got)
 	}
 	// Item 3 is old and unchanged for 50 days, but Closed is a terminal state, so it must
 	// not count as stale.
-	if got := gaugeValue(t, metrics.BoardsWorkItemsStaleTotal, "org", "proj", "Bug", "Closed"); got != 0 {
+	if got := gaugeValue(t, metrics.BoardsWorkItemsStaleTotal, "org", "proj", "Bug", "Closed", "proj\\TeamB", "proj\\Sprint 2"); got != 0 {
 		t.Errorf("BoardsWorkItemsStaleTotal[Bug,Closed] = %v, want 0", got)
 	}
 	// Item 3 has a lead time of ~50 days (closed 50 days after creation) and item 4 of
@@ -207,30 +227,31 @@ func TestCollectBoards(t *testing.T) {
 		t.Errorf("BoardsLeadTimeMaxDays = %v, want ~50", got)
 	}
 
-	// Priority: item1 (Task, priority 2), items 3+4 (Bug, priority 1). Items 2 and 5 have no
-	// priority set and must be excluded.
-	if got := gaugeValue(t, metrics.BoardsWorkItemsByPriority, "org", "proj", "Task", "2"); got != 1 {
+	// Priority: item1 (Task, priority 2, TeamA/Sprint1), items 3+4 (Bug, priority 1,
+	// TeamB/Sprint2 — same area/iteration, so they still combine into one series). Items 2 and
+	// 5 have no priority set and must be excluded.
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByPriority, "org", "proj", "Task", "2", "proj\\TeamA", "proj\\Sprint 1"); got != 1 {
 		t.Errorf("BoardsWorkItemsByPriority[Task,2] = %v, want 1", got)
 	}
-	if got := gaugeValue(t, metrics.BoardsWorkItemsByPriority, "org", "proj", "Bug", "1"); got != 2 {
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByPriority, "org", "proj", "Bug", "1", "proj\\TeamB", "proj\\Sprint 2"); got != 2 {
 		t.Errorf("BoardsWorkItemsByPriority[Bug,1] = %v, want 2", got)
 	}
 
 	// Severity is only tallied for Bug work items.
-	if got := gaugeValue(t, metrics.BoardsBugsBySeverity, "org", "proj", "2 - High"); got != 1 {
+	if got := gaugeValue(t, metrics.BoardsBugsBySeverity, "org", "proj", "2 - High", "proj\\TeamB", "proj\\Sprint 2"); got != 1 {
 		t.Errorf("BoardsBugsBySeverity[2 - High] = %v, want 1", got)
 	}
-	if got := gaugeValue(t, metrics.BoardsBugsBySeverity, "org", "proj", "3 - Medium"); got != 1 {
+	if got := gaugeValue(t, metrics.BoardsBugsBySeverity, "org", "proj", "3 - Medium", "proj\\TeamB", "proj\\Sprint 2"); got != 1 {
 		t.Errorf("BoardsBugsBySeverity[3 - Medium] = %v, want 1", got)
 	}
 
-	// Only item 2 (Task/Active) has neither Story Points nor Effort set; items 1 and 5 have
-	// Story Points, so Task/Active without_estimate is 1. Bug/Closed items both have at least
-	// one of the two fields set, so it's 0.
-	if got := gaugeValue(t, metrics.BoardsWorkItemsWithoutEstimateTotal, "org", "proj", "Task", "Active"); got != 1 {
+	// Only item 2 (Task/Active/TeamA/Sprint1) has neither Story Points nor Effort set, so
+	// without_estimate is 1 for that area/iteration. Bug/Closed items both have at least one of
+	// the two fields set, so it's 0.
+	if got := gaugeValue(t, metrics.BoardsWorkItemsWithoutEstimateTotal, "org", "proj", "Task", "Active", "proj\\TeamA", "proj\\Sprint 1"); got != 1 {
 		t.Errorf("BoardsWorkItemsWithoutEstimateTotal[Task,Active] = %v, want 1", got)
 	}
-	if got := gaugeValue(t, metrics.BoardsWorkItemsWithoutEstimateTotal, "org", "proj", "Bug", "Closed"); got != 0 {
+	if got := gaugeValue(t, metrics.BoardsWorkItemsWithoutEstimateTotal, "org", "proj", "Bug", "Closed", "proj\\TeamB", "proj\\Sprint 2"); got != 0 {
 		t.Errorf("BoardsWorkItemsWithoutEstimateTotal[Bug,Closed] = %v, want 0", got)
 	}
 
@@ -242,16 +263,20 @@ func TestCollectBoards(t *testing.T) {
 		t.Errorf("BoardsWorkItemsWithoutAreaPathTotal[Task] = %v, want 1", got)
 	}
 
-	// Story Points: Task/Active = item1(3) + item5(2) = 5; Bug/Closed = item3(5) only.
-	if got := gaugeValue(t, metrics.BoardsStoryPointsTotal, "org", "proj", "Task", "Active"); got != 5 {
-		t.Errorf("BoardsStoryPointsTotal[Task,Active] = %v, want 5", got)
+	// Story Points: item1 (TeamA/Sprint1, 3) and item5 ("","" — no area/iteration, 2) no longer
+	// combine into one Task/Active series, since they have different area/iteration paths.
+	if got := gaugeValue(t, metrics.BoardsStoryPointsTotal, "org", "proj", "Task", "Active", "proj\\TeamA", "proj\\Sprint 1"); got != 3 {
+		t.Errorf("BoardsStoryPointsTotal[Task,Active,TeamA,Sprint1] = %v, want 3", got)
 	}
-	if got := gaugeValue(t, metrics.BoardsStoryPointsTotal, "org", "proj", "Bug", "Closed"); got != 5 {
+	if got := gaugeValue(t, metrics.BoardsStoryPointsTotal, "org", "proj", "Task", "Active", "", ""); got != 2 {
+		t.Errorf("BoardsStoryPointsTotal[Task,Active,\"\",\"\"] = %v, want 2", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsStoryPointsTotal, "org", "proj", "Bug", "Closed", "proj\\TeamB", "proj\\Sprint 2"); got != 5 {
 		t.Errorf("BoardsStoryPointsTotal[Bug,Closed] = %v, want 5", got)
 	}
 
-	// Effort: Bug/Closed = item3(8) + item4(2) = 10.
-	if got := gaugeValue(t, metrics.BoardsEffortTotal, "org", "proj", "Bug", "Closed"); got != 10 {
+	// Effort: item3(8) + item4(2) = 10, same area/iteration (TeamB/Sprint2) so still combined.
+	if got := gaugeValue(t, metrics.BoardsEffortTotal, "org", "proj", "Bug", "Closed", "proj\\TeamB", "proj\\Sprint 2"); got != 10 {
 		t.Errorf("BoardsEffortTotal[Bug,Closed] = %v, want 10", got)
 	}
 
@@ -280,19 +305,43 @@ func TestCollectBoards(t *testing.T) {
 		t.Errorf("BoardsSprintVelocityStoryPoints[Team A,Sprint P2] = %v, want 2", got)
 	}
 
-	// Custom.Platform: item1 (Task/Active) is iOS; items 2 and 5 (also Task/Active) have it
-	// unset. Item3 (Bug/Closed) is Android; item4 (also Bug/Closed) has it unset.
-	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Task", "Active", "platform", "iOS"); got != 1 {
+	// Custom.Platform: item1 (Task/Active/TeamA/Sprint1) is iOS; item2 (also Task/Active/TeamA/
+	// Sprint1) has it unset; item5 (Task/Active but no area/iteration) also has it unset but in
+	// a separate series since its area/iteration differs from item2's. Item3 (Bug/Closed) is
+	// Android; item4 (also Bug/Closed, same TeamB/Sprint2) has it unset.
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Task", "Active", "platform", "iOS", "proj\\TeamA", "proj\\Sprint 1"); got != 1 {
 		t.Errorf("BoardsWorkItemsByCustomFieldTotal[Task,Active,platform,iOS] = %v, want 1", got)
 	}
-	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Task", "Active", "platform", unsetCustomFieldValue); got != 2 {
-		t.Errorf("BoardsWorkItemsByCustomFieldTotal[Task,Active,platform,unset] = %v, want 2", got)
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Task", "Active", "platform", unsetCustomFieldValue, "proj\\TeamA", "proj\\Sprint 1"); got != 1 {
+		t.Errorf("BoardsWorkItemsByCustomFieldTotal[Task,Active,platform,unset,TeamA,Sprint1] = %v, want 1", got)
 	}
-	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Bug", "Closed", "platform", "Android"); got != 1 {
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Task", "Active", "platform", unsetCustomFieldValue, "", ""); got != 1 {
+		t.Errorf("BoardsWorkItemsByCustomFieldTotal[Task,Active,platform,unset,\"\",\"\"] = %v, want 1", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Bug", "Closed", "platform", "Android", "proj\\TeamB", "proj\\Sprint 2"); got != 1 {
 		t.Errorf("BoardsWorkItemsByCustomFieldTotal[Bug,Closed,platform,Android] = %v, want 1", got)
 	}
-	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Bug", "Closed", "platform", unsetCustomFieldValue); got != 1 {
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Bug", "Closed", "platform", unsetCustomFieldValue, "proj\\TeamB", "proj\\Sprint 2"); got != 1 {
 		t.Errorf("BoardsWorkItemsByCustomFieldTotal[Bug,Closed,platform,unset] = %v, want 1", got)
+	}
+
+	// Sprint delivery: Sprint P1 (finish -43d) fully postdates item 3's ClosedDate (-50d), so
+	// it's on_time. Sprint P2 (finish -22d) ends before item 4's ClosedDate (-20d), so it's
+	// late; item 2 (still Active) in the same sprint is not_delivered.
+	if got := gaugeValue(t, metrics.BoardsSprintDeliveryTotal, "org", "proj", "Team A", "Sprint P1", "on_time"); got != 1 {
+		t.Errorf("BoardsSprintDeliveryTotal[Team A,Sprint P1,on_time] = %v, want 1", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsSprintDeliveryTotal, "org", "proj", "Team A", "Sprint P1", "late"); got != 0 {
+		t.Errorf("BoardsSprintDeliveryTotal[Team A,Sprint P1,late] = %v, want 0", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsSprintDeliveryTotal, "org", "proj", "Team A", "Sprint P2", "late"); got != 1 {
+		t.Errorf("BoardsSprintDeliveryTotal[Team A,Sprint P2,late] = %v, want 1", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsSprintDeliveryTotal, "org", "proj", "Team A", "Sprint P2", "not_delivered"); got != 1 {
+		t.Errorf("BoardsSprintDeliveryTotal[Team A,Sprint P2,not_delivered] = %v, want 1", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsSprintDeliveryTotal, "org", "proj", "Team A", "Sprint P2", "on_time"); got != 0 {
+		t.Errorf("BoardsSprintDeliveryTotal[Team A,Sprint P2,on_time] = %v, want 0", got)
 	}
 }
 
@@ -363,15 +412,16 @@ func TestCollectBoards_CustomFieldMultiValue(t *testing.T) {
 	}
 
 	// Both items carry "cxm", so it must count 2 even though item 1's raw value is "cxm;nps".
-	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj-multivalue", "Task", "Active", "platform", "cxm"); got != 2 {
+	// Neither item sets an area/iteration path, so both labels are "".
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj-multivalue", "Task", "Active", "platform", "cxm", "", ""); got != 2 {
 		t.Errorf("BoardsWorkItemsByCustomFieldTotal[...,platform,cxm] = %v, want 2", got)
 	}
 	// Only item 1 carries "nps".
-	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj-multivalue", "Task", "Active", "platform", "nps"); got != 1 {
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj-multivalue", "Task", "Active", "platform", "nps", "", ""); got != 1 {
 		t.Errorf("BoardsWorkItemsByCustomFieldTotal[...,platform,nps] = %v, want 1", got)
 	}
 	// The combined raw string must not itself be a bucket.
-	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj-multivalue", "Task", "Active", "platform", "cxm;nps"); got != 0 {
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj-multivalue", "Task", "Active", "platform", "cxm;nps", "", ""); got != 0 {
 		t.Errorf("BoardsWorkItemsByCustomFieldTotal[...,platform,\"cxm;nps\"] = %v, want 0 (should be split)", got)
 	}
 }
