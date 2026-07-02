@@ -2,6 +2,7 @@ package collectors
 
 import (
 	"fmt"
+	"log/slog"
 	"sort"
 	"strconv"
 	"time"
@@ -34,6 +35,18 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 	}
 
 	items, err := client.GetWorkItems(project, ids, customFields)
+	if err != nil && len(customFields) > 0 {
+		// Some invalid custom field reference names (a typo, or a field that doesn't exist on
+		// this project's process template) make Azure DevOps reject the *entire* workitemsbatch
+		// request with an HTTP 400, not just omit that one field from the response. Retry once
+		// without any custom fields so a bad AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS value degrades to
+		// "work_items_by_custom_field_total has no data this scrape" instead of taking down every
+		// other Boards metric for the project.
+		slog.Warn("boards: workitemsbatch failed with custom fields, retrying without them",
+			"project", project, "custom_fields", customFields, "error", err)
+		customFields = nil
+		items, err = client.GetWorkItems(project, ids, customFields)
+	}
 	if err != nil {
 		return fmt.Errorf("get work items: %w", err)
 	}
