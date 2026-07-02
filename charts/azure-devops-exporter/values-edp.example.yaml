@@ -8,9 +8,12 @@
 #
 # The token is deliberately not set here — see azureDevOps.existingSecret below.
 
-image:
-  repository: ghcr.io/robertasolimandonofreo/azure-devops-exporter
-  tag: latest
+# image.repository only needs overriding if you're not using the published
+# ghcr.io/robertasolimandonofreo/azure-devops-exporter image (the chart's default) — e.g. your
+# own mirror/registry. Left commented out here since the default already works.
+# image:
+#   repository: <your-registry>/azure-devops-exporter
+#   tag: latest
 
 azureDevOps:
   organization: "indecxops"
@@ -28,3 +31,24 @@ azureDevOps:
 # Requires the Prometheus Operator CRDs. Set to false if the cluster doesn't have them.
 serviceMonitor:
   enabled: true
+
+# nodeSelector, tolerations and resources are top-level keys (siblings of azureDevOps above),
+# not nested under it — Helm silently ignores anything nested in the wrong place instead of
+# erroring, so a misplaced block like that just quietly falls back to the chart's defaults.
+nodeSelector:
+  role: monitoring
+  karpenter.sh/nodepool: monitoring
+
+tolerations:
+  - key: monitoring
+    operator: Equal
+    value: "yes"
+    effect: NoSchedule
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 20Mi
+  limits:
+    cpu: 20m
+    memory: 50Mi
