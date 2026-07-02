@@ -502,6 +502,21 @@ type WorkItem struct {
 			DisplayName string `json:"displayName"`
 		} `json:"System.AssignedTo"`
 	} `json:"fields"`
+
+	// CustomFields holds the best-effort string value of every field requested via the
+	// customFields argument to GetWorkItems, keyed by that field's Label (not its Azure DevOps
+	// reference name) — a work item with the field unset, or where GetWorkItems wasn't asked
+	// for any custom fields, has no entry for it here.
+	CustomFields map[string]string
+}
+
+// CustomField is a project-specific work item field to fetch alongside the fixed set above —
+// e.g. a "Platform" picklist field a team added to their process template. RefName is the
+// Azure DevOps field reference name (e.g. "Custom.Platform"); Label is what identifies it in
+// the exported metric, defaulting to RefName itself when not overridden — see README.
+type CustomField struct {
+	RefName string
+	Label   string
 }
 
 // TerminalStateNames are the terminal state names used by Azure DevOps' built-in process
@@ -585,10 +600,30 @@ func (c *Client) queryWorkItemIDs(project, wiql string) ([]int, error) {
 	return ids, nil
 }
 
-// GetWorkItems fetches type, state and assignee for a set of work item IDs,
-// batching requests in groups of workItemBatchSize.
-func (c *Client) GetWorkItems(project string, ids []int) ([]WorkItem, error) {
+// fixedWorkItemFields are the fields GetWorkItems always requests, regardless of any
+// project-specific customFields passed in.
+var fixedWorkItemFields = []string{
+	"System.WorkItemType", "System.State", "System.AreaPath", "System.IterationPath",
+	"System.CreatedDate", "System.ChangedDate", "Microsoft.VSTS.Common.ClosedDate",
+	"Microsoft.VSTS.Common.Priority", "Microsoft.VSTS.Common.Severity",
+	"Microsoft.VSTS.Scheduling.StoryPoints", "Microsoft.VSTS.Scheduling.Effort",
+	"System.AssignedTo",
+}
+
+// GetWorkItems fetches the fixed set of fields the boards collector needs, plus any
+// project-specific customFields (see CustomField), for a set of work item IDs, batching
+// requests in groups of workItemBatchSize.
+func (c *Client) GetWorkItems(project string, ids []int, customFields []CustomField) ([]WorkItem, error) {
 	path := fmt.Sprintf("%s/%s/_apis/wit/workitemsbatch", c.baseURL, url.PathEscape(project))
+
+	fields := fixedWorkItemFields
+	if len(customFields) > 0 {
+		fields = make([]string, 0, len(fixedWorkItemFields)+len(customFields))
+		fields = append(fields, fixedWorkItemFields...)
+		for _, cf := range customFields {
+			fields = append(fields, cf.RefName)
+		}
+	}
 
 	var all []WorkItem
 	for start := 0; start < len(ids); start += workItemBatchSize {
@@ -596,25 +631,61 @@ func (c *Client) GetWorkItems(project string, ids []int) ([]WorkItem, error) {
 		if end > len(ids) {
 			end = len(ids)
 		}
-		body := map[string]any{
-			"ids": ids[start:end],
-			"fields": []string{
-				"System.WorkItemType", "System.State", "System.AreaPath", "System.IterationPath",
-				"System.CreatedDate", "System.ChangedDate", "Microsoft.VSTS.Common.ClosedDate",
-				"Microsoft.VSTS.Common.Priority", "Microsoft.VSTS.Common.Severity",
-				"Microsoft.VSTS.Scheduling.StoryPoints", "Microsoft.VSTS.Scheduling.Effort",
-				"System.AssignedTo",
-			},
-		}
+		body := map[string]any{"ids": ids[start:end], "fields": fields}
+
 		var page struct {
-			Value []WorkItem `json:"value"`
+			Value []struct {
+				ID     int                        `json:"id"`
+				Fields map[string]json.RawMessage `json:"fields"`
+			} `json:"value"`
 		}
 		if err := c.post(path, url.Values{"api-version": {apiVersion}}, body, &page); err != nil {
 			return nil, fmt.Errorf("get work items batch: %w", err)
 		}
-		all = append(all, page.Value...)
+
+		for _, raw := range page.Value {
+			item := WorkItem{ID: raw.ID}
+			fieldsJSON, err := json.Marshal(raw.Fields)
+			if err != nil {
+				return nil, fmt.Errorf("re-encode work item %d fields: %w", raw.ID, err)
+			}
+			if err := json.Unmarshal(fieldsJSON, &item.Fields); err != nil {
+				return nil, fmt.Errorf("decode work item %d fields: %w", raw.ID, err)
+			}
+
+			if len(customFields) > 0 {
+				item.CustomFields = make(map[string]string, len(customFields))
+				for _, cf := range customFields {
+					if v, ok := raw.Fields[cf.RefName]; ok {
+						item.CustomFields[cf.Label] = customFieldValue(v)
+					}
+				}
+			}
+			all = append(all, item)
+		}
 	}
 	return all, nil
+}
+
+// customFieldValue best-effort stringifies a custom field's raw JSON value: plain strings
+// (the common case — text and picklist fields) pass through as-is, identity-picker fields
+// (an object with a displayName) use that, and anything else (numbers, bools) falls back to
+// its default JSON-ish string form.
+func customFieldValue(raw json.RawMessage) string {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return ""
+	}
+	if m, ok := v.(map[string]any); ok {
+		if displayName, ok := m["displayName"].(string); ok {
+			return displayName
+		}
+	}
+	return fmt.Sprint(v)
 }
 
 func (c *Client) get(path string, query url.Values, out interface{}) error {

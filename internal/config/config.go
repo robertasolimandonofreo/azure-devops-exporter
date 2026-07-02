@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"azure-devops-exporter/internal/azuredevops"
 )
 
 const (
@@ -73,6 +75,11 @@ type Config struct {
 	Port           int
 	ScrapeInterval time.Duration
 	LogLevel       string
+	// BoardsCustomFields is the project-specific work item fields (e.g. a "Platform" picklist)
+	// to break azure_devops_boards_work_items_by_custom_field_total down by, in addition to the
+	// fixed set of fields every other Boards metric already uses. Applies to every project —
+	// there's no per-project custom field list, only the per-project collector selection above.
+	BoardsCustomFields []azuredevops.CustomField
 }
 
 // Load reads configuration from environment variables and validates required fields.
@@ -89,6 +96,12 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.Projects = projects
+
+	customFields, err := parseCustomFields(os.Getenv("AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS"))
+	if err != nil {
+		return nil, err
+	}
+	cfg.BoardsCustomFields = customFields
 
 	port, err := envIntOrDefault("EXPORTER_PORT", defaultPort)
 	if err != nil {
@@ -167,6 +180,44 @@ func parseCollectors(projectName, raw string) (map[string]bool, error) {
 		collectors[c] = true
 	}
 	return collectors, nil
+}
+
+// parseCustomFields parses AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS: a comma-separated list of Azure
+// DevOps field reference names, each optionally followed by ":" and a friendlier label to use
+// in the metric's "field" label instead of the raw reference name (e.g.
+// "Custom.Platform:platform,Custom.Squad" — the second field has no ":", so its label defaults
+// to its reference name, "Custom.Squad").
+func parseCustomFields(raw string) ([]azuredevops.CustomField, error) {
+	parts := strings.Split(raw, ",")
+	fields := make([]azuredevops.CustomField, 0, len(parts))
+	seen := make(map[string]bool, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+
+		refName, label, hasLabel := strings.Cut(p, ":")
+		refName = strings.TrimSpace(refName)
+		if refName == "" {
+			return nil, fmt.Errorf("AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS: empty field reference name in %q", p)
+		}
+		if seen[refName] {
+			return nil, fmt.Errorf("AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS: field %q listed more than once", refName)
+		}
+		seen[refName] = true
+
+		if hasLabel {
+			label = strings.TrimSpace(label)
+		} else {
+			label = refName
+		}
+		if label == "" {
+			return nil, fmt.Errorf("AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS: empty label for field %q", refName)
+		}
+		fields = append(fields, azuredevops.CustomField{RefName: refName, Label: label})
+	}
+	return fields, nil
 }
 
 func envOrDefault(key, def string) string {

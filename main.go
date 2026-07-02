@@ -97,12 +97,19 @@ func runScrapeLoop(ctx context.Context, client *azuredevops.Client, cfg *config.
 }
 
 func scrapeAll(client *azuredevops.Client, cfg *config.Config) {
+	// CollectBoards takes an extra customFields argument the other three collectors don't have,
+	// so it's adapted to scrapeComponent's shared (client, organization, project) signature via
+	// this closure rather than changing that signature for every collector.
+	collectBoards := func(client *azuredevops.Client, organization, project string) error {
+		return collectors.CollectBoards(client, organization, project, cfg.BoardsCustomFields)
+	}
+
 	for _, project := range cfg.Projects {
 		if project.Enabled(config.ComponentRepos) {
 			scrapeComponent(config.ComponentRepos, client, cfg, project.Name, collectors.CollectRepos)
 		}
 		if project.Enabled(config.ComponentBoards) {
-			scrapeComponent(config.ComponentBoards, client, cfg, project.Name, collectors.CollectBoards)
+			scrapeComponent(config.ComponentBoards, client, cfg, project.Name, collectBoards)
 		}
 		if project.Enabled(config.ComponentPipelines) {
 			scrapeComponent(config.ComponentPipelines, client, cfg, project.Name, collectors.CollectPipelines)

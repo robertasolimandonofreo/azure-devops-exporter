@@ -11,3 +11,6 @@ data:
   EXPORTER_PORT: {{ .Values.exporter.port | quote }}
   SCRAPE_INTERVAL_SECONDS: {{ .Values.exporter.scrapeIntervalSeconds | quote }}
   LOG_LEVEL: {{ .Values.exporter.logLevel | quote }}
+  {{- if .Values.azureDevOps.boardsCustomFields }}
+  AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS: {{ .Values.azureDevOps.boardsCustomFields | quote }}
+  {{- end }}

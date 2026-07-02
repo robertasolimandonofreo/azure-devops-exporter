@@ -14,19 +14,26 @@ import (
 
 const unassigned = "unassigned"
 
+// unsetCustomFieldValue is the "value" label used for azure_devops_boards_work_items_by_custom_field_total
+// when a configured custom field is unset on a given work item.
+const unsetCustomFieldValue = "unset"
+
 // staleThreshold is how long a non-closed work item can go without a field change before it
 // counts as stale. ponytail: fixed threshold, make configurable if a project needs a different one.
 const staleThreshold = 14 * 24 * time.Hour
 
-// CollectBoards fetches work item data for a project and updates the corresponding
-// metrics. On error, previously collected metrics for this project are left untouched.
-func CollectBoards(client *azuredevops.Client, organization, project string) error {
+// CollectBoards fetches work item data for a project and updates the corresponding metrics.
+// customFields is the project's configured set of extra fields to break work items down by
+// (see azuredevops.CustomField and the README) — nil/empty if none are configured, in which
+// case azure_devops_boards_work_items_by_custom_field_total is simply never populated. On
+// error, previously collected metrics for this project are left untouched.
+func CollectBoards(client *azuredevops.Client, organization, project string, customFields []azuredevops.CustomField) error {
 	ids, err := client.QueryWorkItemIDs(project)
 	if err != nil {
 		return fmt.Errorf("query work items: %w", err)
 	}
 
-	items, err := client.GetWorkItems(project, ids)
+	items, err := client.GetWorkItems(project, ids, customFields)
 	if err != nil {
 		return fmt.Errorf("get work items: %w", err)
 	}
@@ -44,6 +51,7 @@ func CollectBoards(client *azuredevops.Client, organization, project string) err
 	type leadTimeKey struct{ workItemType, areaPath, iterationPath string }
 	type typeStateKey struct{ workItemType, state string }
 	type priorityKey struct{ workItemType, priority string }
+	type customFieldKey struct{ workItemType, state, field, value string }
 	byState := make(map[stateKey]int)
 	byAssignee := make(map[string]int)
 	staleByType := make(map[stateKey]int)
@@ -55,6 +63,7 @@ func CollectBoards(client *azuredevops.Client, organization, project string) err
 	withoutAreaPath := make(map[string]int)
 	storyPoints := make(map[typeStateKey]float64)
 	effort := make(map[typeStateKey]float64)
+	byCustomField := make(map[customFieldKey]int)
 	now := time.Now()
 	for _, item := range items {
 		f := item.Fields
@@ -95,6 +104,13 @@ func CollectBoards(client *azuredevops.Client, organization, project string) err
 		if f.Effort != nil {
 			effort[tsKey] += *f.Effort
 		}
+		for _, cf := range customFields {
+			value := item.CustomFields[cf.Label]
+			if value == "" {
+				value = unsetCustomFieldValue
+			}
+			byCustomField[customFieldKey{f.WorkItemType, f.State, cf.Label, value}]++
+		}
 	}
 
 	// Clear stale per-state, per-assignee, per-item, lead time and breakdown series before
@@ -115,6 +131,7 @@ func CollectBoards(client *azuredevops.Client, organization, project string) err
 	metrics.BoardsWorkItemsWithoutAreaPathTotal.DeletePartialMatch(labelFilter)
 	metrics.BoardsStoryPointsTotal.DeletePartialMatch(labelFilter)
 	metrics.BoardsEffortTotal.DeletePartialMatch(labelFilter)
+	metrics.BoardsWorkItemsByCustomFieldTotal.DeletePartialMatch(labelFilter)
 
 	metrics.BoardsWorkItemsTotal.WithLabelValues(organization, project).Set(float64(len(items)))
 	metrics.BoardsWorkItemsCreatedTotal.WithLabelValues(organization, project).Set(float64(created))
@@ -160,6 +177,9 @@ func CollectBoards(client *azuredevops.Client, organization, project string) err
 	}
 	for k, sum := range effort {
 		metrics.BoardsEffortTotal.WithLabelValues(organization, project, k.workItemType, k.state).Set(sum)
+	}
+	for k, count := range byCustomField {
+		metrics.BoardsWorkItemsByCustomFieldTotal.WithLabelValues(organization, project, k.workItemType, k.state, k.field, k.value).Set(float64(count))
 	}
 
 	collectTeamMetrics(client, organization, project, items)
