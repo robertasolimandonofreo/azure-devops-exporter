@@ -72,13 +72,20 @@ AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS=Custom.Platform:platform,Custom.Squad
 This applies to every project the exporter scrapes (there's no per-project
 custom field list, unlike the per-project collector selection above) — a
 project whose process template doesn't have a given field simply reports no
-data for it, rather than erroring. A work item where the field is unset
-counts under `value="unset"`, same convention as `unassigned` for
-`work_items_by_assignee`. An unrecognized field is still requested and
-fetched — Azure DevOps just returns nothing for it — so a typo in the
-reference name fails silently (no data, no error) rather than at startup;
-double-check the exact reference name if a configured field's series never
-show up.
+data for it. A work item where the field is unset counts under
+`value="unset"`, same convention as `unassigned` for `work_items_by_assignee`.
+
+**A wrong reference name (typo, or a display name used by mistake) doesn't
+just omit that field — Azure DevOps rejects the *entire* work item fetch
+with an HTTP 400** ("TF51005: The field ... does not exist"), which would
+otherwise take down every other Boards metric for that project. The
+collector catches this: on a failed fetch with custom fields configured, it
+retries once without them and logs a `WARN` (component `boards`) with the
+underlying error, so a bad field name degrades to "no data for
+`work_items_by_custom_field_total` this scrape," not a broken Boards
+collector. Watch the exporter's logs for that warning if the metric never
+shows data for a configured field — the message includes Azure DevOps' own
+explanation of what was wrong with the reference name.
 
 **Finding a field's reference name.** The Azure DevOps UI shows a field's
 *display* name ("Platform"), not the reference name the REST API needs

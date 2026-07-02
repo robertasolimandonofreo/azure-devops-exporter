@@ -296,6 +296,54 @@ func TestCollectBoards(t *testing.T) {
 	}
 }
 
+// TestCollectBoards_FallsBackWithoutCustomFieldsOn400 covers the real-world failure mode where
+// Azure DevOps rejects an entire workitemsbatch request with HTTP 400 because one requested
+// field's reference name doesn't exist (e.g. a typo, or a display name used instead of the
+// reference name) — CollectBoards must retry without custom fields so core Boards metrics
+// still populate, rather than the whole scrape failing over one bad field.
+func TestCollectBoards_FallsBackWithoutCustomFieldsOn400(t *testing.T) {
+	now := time.Now()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/_apis/wit/wiql"):
+			json.NewEncoder(w).Encode(map[string]any{"workItems": []map[string]int{{"id": 1}}})
+		case strings.HasSuffix(r.URL.Path, "/_apis/wit/workitemsbatch"):
+			var body struct {
+				Fields []string `json:"fields"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			for _, f := range body.Fields {
+				if f == "Custom.Bogus" {
+					w.WriteHeader(http.StatusBadRequest)
+					w.Write([]byte(`{"message":"TF51005: The field 'Custom.Bogus' does not exist."}`))
+					return
+				}
+			}
+			json.NewEncoder(w).Encode(map[string]any{"value": []map[string]any{
+				{"id": 1, "fields": map[string]any{
+					"System.WorkItemType": "Task",
+					"System.State":        "Active",
+					"System.CreatedDate":  now.Format(time.RFC3339),
+					"System.ChangedDate":  now.Format(time.RFC3339),
+				}},
+			}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := azuredevops.NewClient(server.URL, "org", "token")
+	customFields := []azuredevops.CustomField{{RefName: "Custom.Bogus", Label: "bogus"}}
+	if err := CollectBoards(client, "org", "proj-fallback", customFields); err != nil {
+		t.Fatalf("expected CollectBoards to fall back and succeed, got error: %v", err)
+	}
+
+	if got := gaugeValue(t, metrics.BoardsWorkItemsTotal, "org", "proj-fallback"); got != 1 {
+		t.Errorf("BoardsWorkItemsTotal = %v, want 1 (core metrics must survive the custom field fallback)", got)
+	}
+}
+
 func TestCollectBoards_KeepsPreviousMetricsOnError(t *testing.T) {
 	server := boardsFakeServer(t)
 	client := azuredevops.NewClient(server.URL, "org", "token")

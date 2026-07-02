@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -717,7 +718,7 @@ func (c *Client) post(path string, query url.Values, body, out interface{}) erro
 		return fmt.Errorf("rate limited (HTTP 429)")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status %d", resp.StatusCode)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, readErrorBody(resp))
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
@@ -744,11 +745,29 @@ func (c *Client) getWithHeader(path string, query url.Values, out interface{}) (
 		return nil, fmt.Errorf("rate limited (HTTP 429)")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d", resp.StatusCode)
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, readErrorBody(resp))
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 	return resp.Header, nil
+}
+
+// maxErrorBodyBytes caps how much of an error response body readErrorBody includes in an
+// error message — Azure DevOps error bodies are small JSON objects, so this is generous
+// headroom against something unexpectedly large (an HTML error page from a proxy, say)
+// ending up in logs wholesale.
+const maxErrorBodyBytes = 2048
+
+// readErrorBody best-effort reads a failed response's body for the error message — Azure
+// DevOps typically returns a JSON body like {"message": "TF51005: ..."} explaining exactly
+// what was wrong with the request (e.g. an unknown field reference name), which a bare status
+// code doesn't. Falls back to a placeholder if the body can't be read.
+func readErrorBody(resp *http.Response) string {
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+	if err != nil || len(body) == 0 {
+		return "(no response body)"
+	}
+	return strings.TrimSpace(string(body))
 }
