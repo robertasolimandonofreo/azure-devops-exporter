@@ -1316,6 +1316,50 @@
         "x": 0,
         "y": 125
       }
+    },
+    {
+      "type": "bargauge",
+      "title": "Open items at or above 13 Story Points",
+      "description": "Per-item Story Points for non-removed work items still open (not in a terminal state). Team convention: 13+ points should be split before starting. See README and the AzureDevOpsLargeItemNotSplit alert.",
+      "targets": [
+        {
+          "expr": "azure_devops_boards_work_item_story_points{organization=~\"$organization\", project=~\"$project\", state!~\"Closed|Done|Resolved|Completed\"} >= 13",
+          "legendFormat": "{{work_item_type}} #{{work_item_id}} ({{state}}) \u2014 {{__value.text}} pts"
+        }
+      ],
+      "id": 164,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 139
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Blocked work items",
+      "description": "Work items tagged \"blocked\" (case-insensitive System.Tags match), by type and state.",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_boards_work_items_blocked_total{organization=~\"$organization\", project=~\"$project\"}) by (work_item_type, state)",
+          "legendFormat": "{{work_item_type}} ({{state}})"
+        }
+      ],
+      "id": 165,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 139
+      }
     }
   ]
 }

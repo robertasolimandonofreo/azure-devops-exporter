@@ -518,6 +518,9 @@ type WorkItem struct {
 		AssignedTo  *struct {
 			DisplayName string `json:"displayName"`
 		} `json:"System.AssignedTo"`
+		// Tags is Azure DevOps' own ";"-separated tag list (e.g. "Blocked; UrgentFix") —
+		// distinct from AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS custom fields, always fetched.
+		Tags string `json:"System.Tags"`
 	} `json:"fields"`
 
 	// CustomFields holds the best-effort string value of every field requested via the
@@ -624,7 +627,7 @@ var fixedWorkItemFields = []string{
 	"System.CreatedDate", "System.ChangedDate", "Microsoft.VSTS.Common.ClosedDate",
 	"Microsoft.VSTS.Common.Priority", "Microsoft.VSTS.Common.Severity",
 	"Microsoft.VSTS.Scheduling.StoryPoints", "Microsoft.VSTS.Scheduling.Effort",
-	"System.AssignedTo",
+	"System.AssignedTo", "System.Tags",
 }
 
 // GetWorkItems fetches the fixed set of fields the boards collector needs, plus any

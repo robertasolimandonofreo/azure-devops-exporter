@@ -129,3 +129,56 @@ spec:
             description: >-
               Project {{ $labels.project }} has {{ $value }} bug(s) at severity
               "{{ $labels.severity }}".
+
+        # The four rules below encode one team's Story Points/WIP conventions rather than
+        # anything Azure DevOps enforces itself — the state names ("Todo", "In Progress"), the
+        # 13-point "should have been split" threshold, the WIP limit of 5, and the "several
+        # blocked items" threshold of 3 are all specific to that team's process. Adjust or drop
+        # whichever of these don't match your own board before relying on them.
+        - alert: AzureDevOpsUnrefinedItemInTodo
+          expr: azure_devops_boards_work_items_without_estimate_total{state="Todo"} > 0
+          for: 1h
+          labels:
+            severity: info
+          annotations:
+            summary: Unestimated work item(s) in Todo
+            description: >-
+              Project {{ $labels.project }} has {{ $value }} {{ $labels.work_item_type }}
+              item(s) in Todo with no Story Points or Effort set — by convention, an
+              unrefined item shouldn't be moved into Todo yet.
+
+        - alert: AzureDevOpsLargeItemNotSplit
+          expr: >-
+            azure_devops_boards_work_item_story_points{state!~"Closed|Done|Resolved|Completed"} >= 13
+          for: 1h
+          labels:
+            severity: warning
+          annotations:
+            summary: Large work item still open
+            description: >-
+              {{ $labels.work_item_type }} #{{ $labels.work_item_id }} in project
+              {{ $labels.project }} has {{ $value }} Story Points and is still open — items
+              at 13+ points are meant to be split into smaller ones before starting.
+
+        - alert: AzureDevOpsWIPLimitExceeded
+          expr: >-
+            sum(azure_devops_boards_work_items_by_state{state="In Progress"}) by (organization, project) > 5
+          for: 30m
+          labels:
+            severity: warning
+          annotations:
+            summary: WIP limit exceeded in In Progress
+            description: >-
+              Project {{ $labels.project }} has {{ $value }} work item(s) in In Progress,
+              above the team's WIP limit of 5.
+
+        - alert: AzureDevOpsManyBlockedItems
+          expr: sum(azure_devops_boards_work_items_blocked_total) by (organization, project) > 3
+          for: 2h
+          labels:
+            severity: info
+          annotations:
+            summary: Several work items blocked
+            description: >-
+              Project {{ $labels.project }} has {{ $value }} work item(s) tagged "blocked" —
+              worth checking whether they're actually getting unblocked or just piling up.

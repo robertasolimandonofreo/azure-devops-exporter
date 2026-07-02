@@ -17,7 +17,8 @@ import (
 // days, to exercise the lead time aggregation), and a third active task with no area/iteration
 // path set (to exercise the without_iteration/without_area_path metrics). Items 1 and 3 also
 // carry a Custom.Platform value ("iOS"/"Android"); items 2, 4 and 5 leave it unset, to exercise
-// the custom field metric and its "unset" bucketing. It also serves a
+// the custom field metric and its "unset" bucketing. Item 2 also carries a "Blocked" tag (among
+// others), exercising the blocked-items metric and its case-insensitive tag matching. It also serves a
 // single team ("Team A") with one current-timeframe iteration ("Sprint 1", backlog: items 1
 // and 2, exercising the active-sprint and capacity metrics) and two past iterations ("Sprint
 // P1" backlog: item 3; "Sprint P2" backlog: items 2 and 4 — item 2 is still Active, so it must
@@ -69,6 +70,7 @@ func boardsFakeServer(t *testing.T) *httptest.Server {
 					"System.IterationPath": "proj\\Sprint 1",
 					"System.CreatedDate":   now.Add(-20 * 24 * time.Hour).Format(time.RFC3339),
 					"System.ChangedDate":   now.Add(-20 * 24 * time.Hour).Format(time.RFC3339),
+					"System.Tags":          "Blocked; UrgentFix",
 				}},
 				{"id": 3, "fields": map[string]any{
 					"System.WorkItemType":                   "Bug",
@@ -284,6 +286,27 @@ func TestCollectBoards(t *testing.T) {
 		t.Errorf("BoardsEffortTotal[Bug,Closed] = %v, want 10", got)
 	}
 
+	// Per-item Story Points: only items with the field set get a series (no Effort fallback,
+	// unlike story_points_total). Item2 and item4 have none, so they must be absent.
+	if got := gaugeValue(t, metrics.BoardsWorkItemStoryPoints, "org", "proj", "Task", "Active", "1", "proj\\TeamA", "proj\\Sprint 1"); got != 3 {
+		t.Errorf("BoardsWorkItemStoryPoints[1] = %v, want 3", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsWorkItemStoryPoints, "org", "proj", "Bug", "Closed", "3", "proj\\TeamB", "proj\\Sprint 2"); got != 5 {
+		t.Errorf("BoardsWorkItemStoryPoints[3] = %v, want 5", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsWorkItemStoryPoints, "org", "proj", "Task", "Active", "5", "", ""); got != 2 {
+		t.Errorf("BoardsWorkItemStoryPoints[5] = %v, want 2", got)
+	}
+
+	// Blocked items: only item2 (Task/Active/TeamA/Sprint1) has a "Blocked" tag (matched
+	// case-insensitively among its other tags).
+	if got := gaugeValue(t, metrics.BoardsWorkItemsBlockedTotal, "org", "proj", "Task", "Active", "proj\\TeamA", "proj\\Sprint 1"); got != 1 {
+		t.Errorf("BoardsWorkItemsBlockedTotal[Task,Active,TeamA,Sprint1] = %v, want 1", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsWorkItemsBlockedTotal, "org", "proj", "Bug", "Closed", "proj\\TeamB", "proj\\Sprint 2"); got != 0 {
+		t.Errorf("BoardsWorkItemsBlockedTotal[Bug,Closed] = %v, want 0", got)
+	}
+
 	// Team A's current sprint (iter-1) contains items 1 and 2, both Task/Active.
 	if got := gaugeValue(t, metrics.BoardsActiveSprintWorkItemsTotal, "org", "proj", "Team A", "Task", "Active"); got != 2 {
 		t.Errorf("BoardsActiveSprintWorkItemsTotal[Team A,Task,Active] = %v, want 2", got)
@@ -372,6 +395,26 @@ func TestSplitCustomFieldValues(t *testing.T) {
 				t.Errorf("splitCustomFieldValues(%q) = %v, want %v", c.raw, got, c.want)
 				break
 			}
+		}
+	}
+}
+
+func TestHasTag(t *testing.T) {
+	cases := []struct {
+		tags string
+		want string
+		got  bool
+	}{
+		{"Blocked; UrgentFix", "blocked", true},
+		{"blocked", "Blocked", true},
+		{"UrgentFix; Blocked", "blocked", true},
+		{"UrgentFix", "blocked", false},
+		{"", "blocked", false},
+		{"Blockedish", "blocked", false},
+	}
+	for _, c := range cases {
+		if got := hasTag(c.tags, c.want); got != c.got {
+			t.Errorf("hasTag(%q, %q) = %v, want %v", c.tags, c.want, got, c.got)
 		}
 	}
 }
