@@ -12,6 +12,9 @@ fullnameOverride: ""
 # projects are required; token is required unless existingSecret is set.
 azureDevOps:
   organization: "my-org"
+  # Optionally restrict a project to specific collectors with ":collector+collector"
+  # (repos, boards, pipelines, releases) — e.g. "proj-a:pipelines+boards,proj-b:repos" —
+  # see README's "Per-project collector selection" section.
   projects: "proj-a,proj-b"
   apiUrl: "https://dev.azure.com"
   token: "change-me"

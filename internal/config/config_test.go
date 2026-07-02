@@ -35,8 +35,12 @@ func TestLoad_MultiProjectAndDefaults(t *testing.T) {
 		t.Fatalf("got %v projects, want %v", cfg.Projects, wantProjects)
 	}
 	for i, p := range wantProjects {
-		if cfg.Projects[i] != p {
-			t.Errorf("project[%d] = %q, want %q", i, cfg.Projects[i], p)
+		if cfg.Projects[i].Name != p {
+			t.Errorf("project[%d].Name = %q, want %q", i, cfg.Projects[i].Name, p)
+		}
+		if !cfg.Projects[i].Enabled(ComponentRepos) || !cfg.Projects[i].Enabled(ComponentBoards) ||
+			!cfg.Projects[i].Enabled(ComponentPipelines) || !cfg.Projects[i].Enabled(ComponentReleases) {
+			t.Errorf("project[%d] = %+v, want every collector enabled (no collector list given)", i, cfg.Projects[i])
 		}
 	}
 
@@ -48,6 +52,63 @@ func TestLoad_MultiProjectAndDefaults(t *testing.T) {
 	}
 	if cfg.ScrapeInterval != defaultScrapeInterval {
 		t.Errorf("ScrapeInterval = %v, want default %v", cfg.ScrapeInterval, defaultScrapeInterval)
+	}
+}
+
+func TestLoad_PerProjectCollectors(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AZURE_DEVOPS_ORGANIZATION", "my-org")
+	t.Setenv("AZURE_DEVOPS_PROJECTS", "proj-a:pipelines+boards, proj-b:repos ,proj-c")
+	t.Setenv("AZURE_DEVOPS_TOKEN", "secret-token")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Projects) != 3 {
+		t.Fatalf("got %d projects, want 3", len(cfg.Projects))
+	}
+
+	a := cfg.Projects[0]
+	if a.Name != "proj-a" {
+		t.Errorf("project[0].Name = %q, want proj-a", a.Name)
+	}
+	if !a.Enabled(ComponentPipelines) || !a.Enabled(ComponentBoards) {
+		t.Errorf("proj-a = %+v, want pipelines and boards enabled", a)
+	}
+	if a.Enabled(ComponentRepos) || a.Enabled(ComponentReleases) {
+		t.Errorf("proj-a = %+v, want repos and releases disabled", a)
+	}
+
+	b := cfg.Projects[1]
+	if b.Name != "proj-b" {
+		t.Errorf("project[1].Name = %q, want proj-b", b.Name)
+	}
+	if !b.Enabled(ComponentRepos) {
+		t.Errorf("proj-b = %+v, want repos enabled", b)
+	}
+	if b.Enabled(ComponentBoards) || b.Enabled(ComponentPipelines) || b.Enabled(ComponentReleases) {
+		t.Errorf("proj-b = %+v, want only repos enabled", b)
+	}
+
+	// No ":" at all — every collector runs, same as the exporter's original behavior.
+	c := cfg.Projects[2]
+	if c.Name != "proj-c" {
+		t.Errorf("project[2].Name = %q, want proj-c", c.Name)
+	}
+	if !c.Enabled(ComponentRepos) || !c.Enabled(ComponentBoards) || !c.Enabled(ComponentPipelines) || !c.Enabled(ComponentReleases) {
+		t.Errorf("proj-c = %+v, want every collector enabled", c)
+	}
+}
+
+func TestLoad_UnknownCollector(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AZURE_DEVOPS_ORGANIZATION", "my-org")
+	t.Setenv("AZURE_DEVOPS_PROJECTS", "proj-a:pipelines+bogus")
+	t.Setenv("AZURE_DEVOPS_TOKEN", "secret-token")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error for unknown collector name")
 	}
 }
 

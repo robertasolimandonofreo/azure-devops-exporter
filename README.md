@@ -19,7 +19,7 @@ Supports multiple projects within a single organization from one instance.
 | Variable | Description | Required | Default |
 | --- | --- | --- | --- |
 | `AZURE_DEVOPS_ORGANIZATION` | Azure DevOps organization name | Yes | - |
-| `AZURE_DEVOPS_PROJECTS` | Comma-separated list of project names | Yes | - |
+| `AZURE_DEVOPS_PROJECTS` | Comma-separated list of project names, each optionally restricted to specific collectors — see below | Yes | - |
 | `AZURE_DEVOPS_TOKEN` | Personal Access Token (needs Code: Read, Work Items: Read, Build: Read, Release: Read, Project and Team: Read) | Yes | - |
 | `AZURE_DEVOPS_API_URL` | Azure DevOps API base URL | No | `https://dev.azure.com` |
 | `EXPORTER_PORT` | HTTP port | No | `8080` |
@@ -27,6 +27,28 @@ Supports multiple projects within a single organization from one instance.
 | `LOG_LEVEL` | `debug`, `info`, `warn`, or `error` | No | `info` |
 
 The token is never logged; it is only sent in the `Authorization` header.
+
+### Per-project collector selection
+
+By default every project in `AZURE_DEVOPS_PROJECTS` gets all four collectors
+(Repos, Boards, Pipelines, Releases) — this is unchanged from before this
+option existed. To scrape only some collectors for a given project, append
+`:` and a `+`-separated list of collector names (`repos`, `boards`,
+`pipelines`, `releases`) to that project's name:
+
+```bash
+AZURE_DEVOPS_PROJECTS=proj-a:pipelines+boards,proj-b:repos,proj-c
+```
+
+- `proj-a` — only Pipelines and Boards
+- `proj-b` — only Repos
+- `proj-c` — no `:`, so all four collectors (the default)
+
+This is per-project, not global: mixing restricted and unrestricted projects
+in the same `AZURE_DEVOPS_PROJECTS` value, as above, is expected. An unknown
+collector name (typo, wrong case) fails startup with a clear error rather
+than silently being ignored. This only controls which collectors *run* for a
+project — it doesn't change any collector's own behavior or metrics.
 
 ## Endpoints
 
