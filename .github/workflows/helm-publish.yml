@@ -1,0 +1,44 @@
+name: Publish Helm chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "charts/azure-devops-exporter/**"
+  workflow_dispatch: {}
+
+env:
+  REGISTRY: ghcr.io
+  CHART_PATH: charts/azure-devops-exporter
+
+jobs:
+  publish-chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Log in to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login "${REGISTRY}" \
+            --username "${{ github.actor }}" --password-stdin
+
+      # Publishes as an OCI artifact under oci://ghcr.io/<owner>/charts/azure-devops-exporter,
+      # tagged with Chart.yaml's version — no "helm repo add" needed to install it, unlike a
+      # traditional (index.yaml-based) Helm repository. Pushing the same version again just
+      # overwrites that tag; bump the "version" field in Chart.yaml for a new one.
+      - name: Package chart
+        run: helm package "${CHART_PATH}" --destination .helm-package
+
+      - name: Push chart
+        run: |
+          chart_tgz="$(ls .helm-package/*.tgz)"
+          helm push "${chart_tgz}" "oci://${REGISTRY}/${{ github.repository_owner }}/charts"
