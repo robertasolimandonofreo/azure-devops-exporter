@@ -198,6 +198,21 @@ var (
 		Help: "Number of work items in each team's current sprint, by team, type and state. Teams with no current iteration contribute no series.",
 	}, []string{"organization", "project", "team", "work_item_type", "state"})
 
+	BoardsActiveSprintStoryPointsTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_active_sprint_story_points_total",
+		Help: "Sum of Story Points (falling back to Effort when Story Points is unset) for work items in each team's current sprint. Compare with team_capacity_hours_per_day to gauge over/under-allocation — see README.",
+	}, []string{"organization", "project", "team"})
+
+	BoardsTeamCapacityHoursPerDay = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_team_capacity_hours_per_day",
+		Help: "Sum of each team member's configured capacityPerDay (all activities) for the team's current sprint. Not adjusted for days off or sprint length — see README. Teams with no current iteration contribute no series.",
+	}, []string{"organization", "project", "team"})
+
+	BoardsSprintVelocityStoryPoints = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_sprint_velocity_story_points",
+		Help: "Sum of Story Points (falling back to Effort) completed in each of a team's last few past sprints, by iteration name — see README for how many sprints and what counts as completed.",
+	}, []string{"organization", "project", "team", "iteration"})
+
 	// Pipelines domain.
 	PipelinesTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_pipelines_total",

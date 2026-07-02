@@ -398,25 +398,61 @@ func (c *Client) ListTeams(project string) ([]Team, error) {
 
 // Iteration is a team's sprint/iteration.
 type Iteration struct {
-	ID string `json:"id"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Attributes struct {
+		StartDate time.Time `json:"startDate"`
+	} `json:"attributes"`
+}
+
+// ListTeamIterations returns a team's iterations for the given timeframe ("past", "current",
+// "future"), or every iteration if timeframe is empty.
+func (c *Client) ListTeamIterations(project, team, timeframe string) ([]Iteration, error) {
+	path := fmt.Sprintf("%s/%s/%s/_apis/work/teamsettings/iterations", c.baseURL, url.PathEscape(project), url.PathEscape(team))
+	query := url.Values{"api-version": {apiVersion}}
+	if timeframe != "" {
+		query.Set("$timeframe", timeframe)
+	}
+	var result struct {
+		Value []Iteration `json:"value"`
+	}
+	if err := c.get(path, query, &result); err != nil {
+		return nil, fmt.Errorf("list team iterations: %w", err)
+	}
+	return result.Value, nil
 }
 
 // GetCurrentIteration returns the team's current-timeframe iteration (its active sprint), or
 // nil if the team has no iteration classified as current — which is the normal case for teams
 // that don't use sprints, not an error.
 func (c *Client) GetCurrentIteration(project, team string) (*Iteration, error) {
-	path := fmt.Sprintf("%s/%s/%s/_apis/work/teamsettings/iterations", c.baseURL, url.PathEscape(project), url.PathEscape(team))
-	query := url.Values{"api-version": {apiVersion}, "$timeframe": {"current"}}
-	var result struct {
-		Value []Iteration `json:"value"`
+	iterations, err := c.ListTeamIterations(project, team, "current")
+	if err != nil {
+		return nil, err
 	}
-	if err := c.get(path, query, &result); err != nil {
-		return nil, fmt.Errorf("get current iteration: %w", err)
-	}
-	if len(result.Value) == 0 {
+	if len(iterations) == 0 {
 		return nil, nil
 	}
-	return &result.Value[0], nil
+	return &iterations[0], nil
+}
+
+// Capacity is a team's per-member capacity for one iteration.
+type Capacity struct {
+	TeamMembers []struct {
+		Activities []struct {
+			CapacityPerDay float64 `json:"capacityPerDay"`
+		} `json:"activities"`
+	} `json:"teamMembers"`
+}
+
+// GetTeamIterationCapacity returns a team's configured capacity for one of its iterations.
+func (c *Client) GetTeamIterationCapacity(project, team, iterationID string) (*Capacity, error) {
+	path := fmt.Sprintf("%s/%s/%s/_apis/work/teamsettings/iterations/%s/capacities", c.baseURL, url.PathEscape(project), url.PathEscape(team), url.PathEscape(iterationID))
+	var capacity Capacity
+	if err := c.get(path, url.Values{"api-version": {apiVersion}}, &capacity); err != nil {
+		return nil, fmt.Errorf("get team iteration capacity: %w", err)
+	}
+	return &capacity, nil
 }
 
 // ListIterationWorkItemIDs returns the IDs of work items assigned to a team's iteration (its

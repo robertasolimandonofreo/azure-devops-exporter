@@ -162,17 +162,28 @@ func CollectBoards(client *azuredevops.Client, organization, project string) err
 		metrics.BoardsEffortTotal.WithLabelValues(organization, project, k.workItemType, k.state).Set(sum)
 	}
 
-	collectActiveSprints(client, organization, project, items)
+	collectTeamMetrics(client, organization, project, items)
 	return nil
 }
 
-// collectActiveSprints updates the active-sprint metric for every team in the project. It's
-// best-effort per team: a team with no current iteration (most teams that don't run sprints)
-// or a transient API error just contributes no series, rather than failing the whole
-// CollectBoards call over data that's already layered on top of the core work item counts above.
-func collectActiveSprints(client *azuredevops.Client, organization, project string, items []azuredevops.WorkItem) {
+// velocitySprintCount is how many of a team's most recent past sprints collectTeamMetrics
+// computes velocity for.
+const velocitySprintCount = 5
+
+type teamStateKey struct{ team, workItemType, state string }
+
+// collectTeamMetrics updates the per-team metrics (active sprint composition, active sprint
+// story points, team capacity and sprint velocity) for every team in the project. It's
+// best-effort per team: a team with no current or past iterations (most teams that don't run
+// sprints), or a transient API error on any of the calls below, just contributes no series for
+// that piece of data, rather than failing the whole CollectBoards call over data that's already
+// layered on top of the core work item counts above.
+func collectTeamMetrics(client *azuredevops.Client, organization, project string, items []azuredevops.WorkItem) {
 	labelFilter := prometheus.Labels{"organization": organization, "project": project}
 	metrics.BoardsActiveSprintWorkItemsTotal.DeletePartialMatch(labelFilter)
+	metrics.BoardsActiveSprintStoryPointsTotal.DeletePartialMatch(labelFilter)
+	metrics.BoardsTeamCapacityHoursPerDay.DeletePartialMatch(labelFilter)
+	metrics.BoardsSprintVelocityStoryPoints.DeletePartialMatch(labelFilter)
 
 	teams, err := client.ListTeams(project)
 	if err != nil {
@@ -184,29 +195,100 @@ func collectActiveSprints(client *azuredevops.Client, organization, project stri
 		itemByID[item.ID] = item
 	}
 
-	type teamStateKey struct{ team, workItemType, state string }
 	byTeamState := make(map[teamStateKey]int)
 	for _, team := range teams {
-		iteration, err := client.GetCurrentIteration(project, team.Name)
-		if err != nil || iteration == nil {
-			continue
-		}
-		ids, err := client.ListIterationWorkItemIDs(project, team.Name, iteration.ID)
-		if err != nil {
-			continue
-		}
-		for _, id := range ids {
-			item, ok := itemByID[id]
-			if !ok {
-				continue
-			}
-			byTeamState[teamStateKey{team.Name, item.Fields.WorkItemType, item.Fields.State}]++
-		}
+		collectActiveSprint(client, organization, project, team, itemByID, byTeamState)
+		collectSprintVelocity(client, organization, project, team, itemByID)
 	}
 
 	for k, count := range byTeamState {
 		metrics.BoardsActiveSprintWorkItemsTotal.WithLabelValues(organization, project, k.team, k.workItemType, k.state).Set(float64(count))
 	}
+}
+
+// collectActiveSprint fills byTeamState with the team's current sprint composition and sets
+// its active-sprint story points and capacity metrics directly (both are per-team scalars, so
+// unlike work item counts they don't need a shared aggregation map).
+func collectActiveSprint(client *azuredevops.Client, organization, project string, team azuredevops.Team, itemByID map[int]azuredevops.WorkItem, byTeamState map[teamStateKey]int) {
+	iteration, err := client.GetCurrentIteration(project, team.Name)
+	if err != nil || iteration == nil {
+		return
+	}
+	ids, err := client.ListIterationWorkItemIDs(project, team.Name, iteration.ID)
+	if err != nil {
+		return
+	}
+
+	var points float64
+	for _, id := range ids {
+		item, ok := itemByID[id]
+		if !ok {
+			continue
+		}
+		byTeamState[teamStateKey{team.Name, item.Fields.WorkItemType, item.Fields.State}]++
+		points += pointsOf(item)
+	}
+	metrics.BoardsActiveSprintStoryPointsTotal.WithLabelValues(organization, project, team.Name).Set(points)
+
+	if capacity, err := client.GetTeamIterationCapacity(project, team.Name, iteration.ID); err == nil {
+		metrics.BoardsTeamCapacityHoursPerDay.WithLabelValues(organization, project, team.Name).Set(totalCapacityPerDay(capacity))
+	}
+}
+
+// collectSprintVelocity sets the sprint velocity metric for a team's last velocitySprintCount
+// past sprints (fewer if the team doesn't have that many), one series per iteration. Velocity
+// only counts work items whose current state is terminal — an item still open past its sprint's
+// end isn't "completed work" for that sprint, even though it's still associated with it.
+func collectSprintVelocity(client *azuredevops.Client, organization, project string, team azuredevops.Team, itemByID map[int]azuredevops.WorkItem) {
+	pastIterations, err := client.ListTeamIterations(project, team.Name, "past")
+	if err != nil || len(pastIterations) == 0 {
+		return
+	}
+	sort.Slice(pastIterations, func(i, j int) bool {
+		return pastIterations[i].Attributes.StartDate.Before(pastIterations[j].Attributes.StartDate)
+	})
+	if len(pastIterations) > velocitySprintCount {
+		pastIterations = pastIterations[len(pastIterations)-velocitySprintCount:]
+	}
+
+	for _, iteration := range pastIterations {
+		ids, err := client.ListIterationWorkItemIDs(project, team.Name, iteration.ID)
+		if err != nil {
+			continue
+		}
+		var points float64
+		for _, id := range ids {
+			item, ok := itemByID[id]
+			if !ok || !isTerminalState(item.Fields.State) {
+				continue
+			}
+			points += pointsOf(item)
+		}
+		metrics.BoardsSprintVelocityStoryPoints.WithLabelValues(organization, project, team.Name, iteration.Name).Set(points)
+	}
+}
+
+// pointsOf returns a work item's Story Points, falling back to Effort when Story Points isn't
+// set — the same fallback convention used by BoardsWorkItemsWithoutEstimateTotal.
+func pointsOf(item azuredevops.WorkItem) float64 {
+	if item.Fields.StoryPoints != nil {
+		return *item.Fields.StoryPoints
+	}
+	if item.Fields.Effort != nil {
+		return *item.Fields.Effort
+	}
+	return 0
+}
+
+// totalCapacityPerDay sums every team member's capacityPerDay across all their activities.
+func totalCapacityPerDay(capacity *azuredevops.Capacity) float64 {
+	var total float64
+	for _, member := range capacity.TeamMembers {
+		for _, activity := range member.Activities {
+			total += activity.CapacityPerDay
+		}
+	}
+	return total
 }
 
 func average(values []float64) float64 {

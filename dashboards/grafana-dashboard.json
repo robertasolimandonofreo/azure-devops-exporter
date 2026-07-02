@@ -1224,6 +1224,54 @@
         "x": 0,
         "y": 111
       }
+    },
+    {
+      "type": "bargauge",
+      "title": "Active sprint load vs capacity by team",
+      "description": "Story points allocated to each team current sprint (falls back to Effort) next to that team nominal daily capacity. Different units (points vs hours/day) - a relative signal, not a literal hours-needed number. See README for what team_capacity_hours_per_day does not account for (days off, sprint length).",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_boards_active_sprint_story_points_total{organization=~\"$organization\", project=~\"$project\"}) by (team)",
+          "legendFormat": "{{team}} \u2014 sprint points"
+        },
+        {
+          "expr": "sum(azure_devops_boards_team_capacity_hours_per_day{organization=~\"$organization\", project=~\"$project\"}) by (team)",
+          "legendFormat": "{{team}} \u2014 capacity/day"
+        }
+      ],
+      "id": 160,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 118
+      }
+    },
+    {
+      "type": "bargauge",
+      "title": "Sprint velocity by team (last 5 sprints)",
+      "description": "Story points completed (terminal state, Effort fallback) per team per past sprint. See README for how many sprints (velocitySprintCount) and what counts as completed.",
+      "targets": [
+        {
+          "expr": "sum(azure_devops_boards_sprint_velocity_story_points{organization=~\"$organization\", project=~\"$project\"}) by (team, iteration)",
+          "legendFormat": "{{team}} \u2014 {{iteration}}"
+        }
+      ],
+      "id": 161,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 118
+      }
     }
   ]
 }

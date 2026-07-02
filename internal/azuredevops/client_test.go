@@ -482,6 +482,57 @@ func TestGetCurrentIteration_NoneConfigured(t *testing.T) {
 	}
 }
 
+func TestListTeamIterations_Past(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("$timeframe"); got != "past" {
+			t.Errorf("$timeframe = %q, want past", got)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"value": []Iteration{{ID: "iter-p1", Name: "Sprint P1"}, {ID: "iter-p2", Name: "Sprint P2"}},
+		})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "org", "token")
+	iterations, err := c.ListTeamIterations("proj", "Team A", "past")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(iterations) != 2 {
+		t.Fatalf("got %d iterations, want 2", len(iterations))
+	}
+}
+
+func TestGetTeamIterationCapacity(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/teamsettings/iterations/iter-1/capacities") {
+			t.Errorf("path = %q, want suffix /teamsettings/iterations/iter-1/capacities", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"teamMembers": []map[string]any{
+				{"activities": []map[string]any{{"capacityPerDay": 4.0}}},
+				{"activities": []map[string]any{{"capacityPerDay": 3.0}, {"capacityPerDay": 1.0}}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "org", "token")
+	capacity, err := c.GetTeamIterationCapacity("proj", "Team A", "iter-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var total float64
+	for _, m := range capacity.TeamMembers {
+		for _, a := range m.Activities {
+			total += a.CapacityPerDay
+		}
+	}
+	if total != 8 {
+		t.Fatalf("got total capacityPerDay %v, want 8", total)
+	}
+}
+
 func TestListIterationWorkItemIDs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/teamsettings/iterations/iter-1/workitems") {
