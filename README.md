@@ -25,6 +25,7 @@ Supports multiple projects within a single organization from one instance.
 | `EXPORTER_PORT` | HTTP port | No | `8080` |
 | `SCRAPE_INTERVAL_SECONDS` | Seconds between scrape cycles | No | `300` |
 | `LOG_LEVEL` | `debug`, `info`, `warn`, or `error` | No | `info` |
+| `AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS` | Comma-separated list of custom work item fields to break Boards metrics down by — see below | No | - |
 
 The token is never logged; it is only sent in the `Authorization` header.
 
@@ -49,6 +50,51 @@ in the same `AZURE_DEVOPS_PROJECTS` value, as above, is expected. An unknown
 collector name (typo, wrong case) fails startup with a clear error rather
 than silently being ignored. This only controls which collectors *run* for a
 project — it doesn't change any collector's own behavior or metrics.
+
+### Custom fields (Boards)
+
+Every process template ends up with project-specific work item fields —
+e.g. a "Platform" picklist a team added to track iOS/Android/Web work. By
+default the Boards collector doesn't know these exist; `AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS`
+tells it which ones to fetch and break `azure_devops_boards_work_items_by_custom_field_total`
+down by, as a comma-separated list of Azure DevOps field **reference names**
+(not their display names — see below for how to find these), each optionally
+followed by `:` and a friendlier label to use in the metric instead:
+
+```bash
+AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS=Custom.Platform:platform,Custom.Squad
+```
+
+- `Custom.Platform` is exposed under `field="platform"` (the override)
+- `Custom.Squad` has no override, so it's exposed under `field="Custom.Squad"`
+  (the raw reference name)
+
+This applies to every project the exporter scrapes (there's no per-project
+custom field list, unlike the per-project collector selection above) — a
+project whose process template doesn't have a given field simply reports no
+data for it, rather than erroring. A work item where the field is unset
+counts under `value="unset"`, same convention as `unassigned` for
+`work_items_by_assignee`. An unrecognized field is still requested and
+fetched — Azure DevOps just returns nothing for it — so a typo in the
+reference name fails silently (no data, no error) rather than at startup;
+double-check the exact reference name if a configured field's series never
+show up.
+
+**Finding a field's reference name.** The Azure DevOps UI shows a field's
+*display* name ("Platform"), not the reference name the REST API needs
+(typically `Custom.Platform`, but process-template-dependent). The
+reliable way to get it: **Project Settings → Process → (work item type) →
+(the field) → Reference name**, or query
+`GET https://dev.azure.com/{org}/{project}/_apis/wit/fields?api-version=7.1`
+and match on the field's display name.
+
+Multi-value fields (tags, multi-select picklists) and non-string fields are
+stringified best-effort: identity-picker fields use the assigned person's
+display name, numbers/booleans use their default string form, and anything
+that doesn't decode as a plain string, an identity, or one of those falls
+back to an empty (effectively `unset`) value — this covers the common
+single-value text/picklist case a "Platform" field is, not every custom
+field type Azure DevOps supports.
 
 ## Endpoints
 
@@ -155,6 +201,7 @@ azure_devops_boards_active_sprint_work_items_total{organization,project,team,wor
 azure_devops_boards_active_sprint_story_points_total{organization,project,team}
 azure_devops_boards_team_capacity_hours_per_day{organization,project,team}
 azure_devops_boards_sprint_velocity_story_points{organization,project,team,iteration}
+azure_devops_boards_work_items_by_custom_field_total{organization,project,work_item_type,state,field,value}
 ```
 
 `azure_devops_boards_work_items_by_type` is intentionally not exposed —
@@ -288,6 +335,21 @@ items with a literally empty `System.IterationPath`/`AreaPath`. In practice
 Azure DevOps defaults both fields to the project's root iteration/area when
 nothing more specific is chosen, so these will usually read `0` — they only
 catch work items created via API calls that explicitly left the field blank.
+
+`work_items_by_custom_field_total` is only populated for fields listed in
+`AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS` (see "Custom fields (Boards)" above) —
+with nothing configured, this metric is simply never written. Unlike the
+per-team metrics below, this costs **no extra API calls**: the configured
+fields are appended to the same `workitemsbatch` request `GetWorkItems`
+already makes for every other Boards metric, so the added cost is a few
+extra bytes per request/response, not extra round trips. `field` is the
+configured label (or the raw reference name if no label override was
+given); `value` is the field's value, stringified as described above, with
+unset values bucketed under `value="unset"`. A field with many distinct
+values (a free-text field misused as a picklist, for instance) adds real
+cardinality here, same caveat as `area_path`/`iteration_path` on
+`work_items_by_state` — this is meant for genuinely low-cardinality
+classification fields like "Platform," not free text.
 
 ## Metrics (Pipelines)
 
@@ -531,7 +593,7 @@ often expected behavior, not a problem, so it isn't alerted on).
 
 ## Grafana dashboard
 
-`dashboards/grafana-dashboard.json` covers all four collectors (48 panels)
+`dashboards/grafana-dashboard.json` covers all four collectors (49 panels)
 plus a DORA overview row: Deployment Frequency and Change Failure Rate for
 both Pipelines and Releases, and Lead Time for Changes computed the DORA
 way — commit to production (`azure_devops_release_lead_time_for_changes_avg_days`),

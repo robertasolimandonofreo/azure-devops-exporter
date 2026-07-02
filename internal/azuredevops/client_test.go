@@ -222,7 +222,7 @@ func TestGetWorkItems_Batches(t *testing.T) {
 	}
 
 	c := NewClient(server.URL, "org", "token")
-	items, err := c.GetWorkItems("proj", ids)
+	items, err := c.GetWorkItems("proj", ids, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -231,6 +231,71 @@ func TestGetWorkItems_Batches(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("got %d requests, want 2 batches", calls)
+	}
+}
+
+func TestGetWorkItems_CustomFields(t *testing.T) {
+	var gotFields []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			IDs    []int    `json:"ids"`
+			Fields []string `json:"fields"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		gotFields = body.Fields
+
+		json.NewEncoder(w).Encode(map[string]any{
+			"value": []map[string]any{
+				{"id": 1, "fields": map[string]any{
+					"System.WorkItemType": "Task",
+					"System.State":        "Active",
+					"Custom.Platform":     "iOS",
+				}},
+				{"id": 2, "fields": map[string]any{
+					"System.WorkItemType": "Task",
+					"System.State":        "Active",
+					// Custom.Platform intentionally absent — the field is unset on this item.
+				}},
+				{"id": 3, "fields": map[string]any{
+					"System.WorkItemType": "Task",
+					"System.State":        "Active",
+					"Custom.Owner":        map[string]any{"displayName": "Alice"},
+				}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	c := NewClient(server.URL, "org", "token")
+	customFields := []CustomField{{RefName: "Custom.Platform", Label: "platform"}, {RefName: "Custom.Owner", Label: "owner"}}
+	items, err := c.GetWorkItems("proj", []int{1, 2, 3}, customFields)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("got %d items, want 3", len(items))
+	}
+
+	for _, f := range []string{"Custom.Platform", "Custom.Owner"} {
+		found := false
+		for _, g := range gotFields {
+			if g == f {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("requested fields %v missing %q", gotFields, f)
+		}
+	}
+
+	if got := items[0].CustomFields["platform"]; got != "iOS" {
+		t.Errorf("item 1 CustomFields[platform] = %q, want iOS", got)
+	}
+	if _, ok := items[1].CustomFields["platform"]; ok {
+		t.Errorf("item 2 CustomFields[platform] = %q, want no entry (field unset)", items[1].CustomFields["platform"])
+	}
+	if got := items[2].CustomFields["owner"]; got != "Alice" {
+		t.Errorf("item 3 CustomFields[owner] = %q, want Alice (from displayName)", got)
 	}
 }
 

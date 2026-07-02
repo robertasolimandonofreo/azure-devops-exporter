@@ -7,6 +7,7 @@ func clearEnv(t *testing.T) {
 	for _, k := range []string{
 		"AZURE_DEVOPS_ORGANIZATION", "AZURE_DEVOPS_PROJECTS", "AZURE_DEVOPS_TOKEN",
 		"AZURE_DEVOPS_API_URL", "EXPORTER_PORT", "SCRAPE_INTERVAL_SECONDS", "LOG_LEVEL",
+		"AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS",
 	} {
 		t.Setenv(k, "")
 	}
@@ -109,6 +110,56 @@ func TestLoad_UnknownCollector(t *testing.T) {
 
 	if _, err := Load(); err == nil {
 		t.Fatal("expected error for unknown collector name")
+	}
+}
+
+func TestLoad_NoCustomFields(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AZURE_DEVOPS_ORGANIZATION", "my-org")
+	t.Setenv("AZURE_DEVOPS_PROJECTS", "proj-a")
+	t.Setenv("AZURE_DEVOPS_TOKEN", "secret-token")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.BoardsCustomFields) != 0 {
+		t.Errorf("BoardsCustomFields = %+v, want empty", cfg.BoardsCustomFields)
+	}
+}
+
+func TestLoad_CustomFields(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AZURE_DEVOPS_ORGANIZATION", "my-org")
+	t.Setenv("AZURE_DEVOPS_PROJECTS", "proj-a")
+	t.Setenv("AZURE_DEVOPS_TOKEN", "secret-token")
+	t.Setenv("AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS", "Custom.Platform:platform, Custom.Squad")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.BoardsCustomFields) != 2 {
+		t.Fatalf("got %d custom fields, want 2", len(cfg.BoardsCustomFields))
+	}
+	if cfg.BoardsCustomFields[0].RefName != "Custom.Platform" || cfg.BoardsCustomFields[0].Label != "platform" {
+		t.Errorf("custom field[0] = %+v, want RefName=Custom.Platform Label=platform", cfg.BoardsCustomFields[0])
+	}
+	// No ":label" — the label defaults to the reference name itself.
+	if cfg.BoardsCustomFields[1].RefName != "Custom.Squad" || cfg.BoardsCustomFields[1].Label != "Custom.Squad" {
+		t.Errorf("custom field[1] = %+v, want RefName=Label=Custom.Squad", cfg.BoardsCustomFields[1])
+	}
+}
+
+func TestLoad_DuplicateCustomField(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("AZURE_DEVOPS_ORGANIZATION", "my-org")
+	t.Setenv("AZURE_DEVOPS_PROJECTS", "proj-a")
+	t.Setenv("AZURE_DEVOPS_TOKEN", "secret-token")
+	t.Setenv("AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS", "Custom.Platform:platform,Custom.Platform:platform2")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error for duplicate custom field reference name")
 	}
 }
 

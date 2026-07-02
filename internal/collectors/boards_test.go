@@ -15,7 +15,9 @@ import (
 // boardsFakeServer serves 5 work items: two active tasks (one assigned, one not, the
 // unassigned one stale), two closed bugs in the same area/iteration (lead times of 50 and 10
 // days, to exercise the lead time aggregation), and a third active task with no area/iteration
-// path set (to exercise the without_iteration/without_area_path metrics). It also serves a
+// path set (to exercise the without_iteration/without_area_path metrics). Items 1 and 3 also
+// carry a Custom.Platform value ("iOS"/"Android"); items 2, 4 and 5 leave it unset, to exercise
+// the custom field metric and its "unset" bucketing. It also serves a
 // single team ("Team A") with one current-timeframe iteration ("Sprint 1", backlog: items 1
 // and 2, exercising the active-sprint and capacity metrics) and two past iterations ("Sprint
 // P1" backlog: item 3; "Sprint P2" backlog: items 2 and 4 — item 2 is still Active, so it must
@@ -55,6 +57,7 @@ func boardsFakeServer(t *testing.T) *httptest.Server {
 					"Microsoft.VSTS.Common.Priority":        2,
 					"Microsoft.VSTS.Scheduling.StoryPoints": 3.0,
 					"System.AssignedTo":                     map[string]string{"displayName": "Alice"},
+					"Custom.Platform":                       "iOS",
 				}},
 				{"id": 2, "fields": map[string]any{
 					"System.WorkItemType":  "Task",
@@ -77,6 +80,7 @@ func boardsFakeServer(t *testing.T) *httptest.Server {
 					"Microsoft.VSTS.Scheduling.StoryPoints": 5.0,
 					"Microsoft.VSTS.Scheduling.Effort":      8.0,
 					"System.AssignedTo":                     map[string]string{"displayName": "Alice"},
+					"Custom.Platform":                       "Android",
 				}},
 				{"id": 4, "fields": map[string]any{
 					"System.WorkItemType":              "Bug",
@@ -146,7 +150,8 @@ func TestCollectBoards(t *testing.T) {
 	defer server.Close()
 
 	client := azuredevops.NewClient(server.URL, "org", "token")
-	if err := CollectBoards(client, "org", "proj"); err != nil {
+	customFields := []azuredevops.CustomField{{RefName: "Custom.Platform", Label: "platform"}}
+	if err := CollectBoards(client, "org", "proj", customFields); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -274,17 +279,32 @@ func TestCollectBoards(t *testing.T) {
 	if got := gaugeValue(t, metrics.BoardsSprintVelocityStoryPoints, "org", "proj", "Team A", "Sprint P2"); got != 2 {
 		t.Errorf("BoardsSprintVelocityStoryPoints[Team A,Sprint P2] = %v, want 2", got)
 	}
+
+	// Custom.Platform: item1 (Task/Active) is iOS; items 2 and 5 (also Task/Active) have it
+	// unset. Item3 (Bug/Closed) is Android; item4 (also Bug/Closed) has it unset.
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Task", "Active", "platform", "iOS"); got != 1 {
+		t.Errorf("BoardsWorkItemsByCustomFieldTotal[Task,Active,platform,iOS] = %v, want 1", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Task", "Active", "platform", unsetCustomFieldValue); got != 2 {
+		t.Errorf("BoardsWorkItemsByCustomFieldTotal[Task,Active,platform,unset] = %v, want 2", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Bug", "Closed", "platform", "Android"); got != 1 {
+		t.Errorf("BoardsWorkItemsByCustomFieldTotal[Bug,Closed,platform,Android] = %v, want 1", got)
+	}
+	if got := gaugeValue(t, metrics.BoardsWorkItemsByCustomFieldTotal, "org", "proj", "Bug", "Closed", "platform", unsetCustomFieldValue); got != 1 {
+		t.Errorf("BoardsWorkItemsByCustomFieldTotal[Bug,Closed,platform,unset] = %v, want 1", got)
+	}
 }
 
 func TestCollectBoards_KeepsPreviousMetricsOnError(t *testing.T) {
 	server := boardsFakeServer(t)
 	client := azuredevops.NewClient(server.URL, "org", "token")
-	if err := CollectBoards(client, "org", "proj-keep"); err != nil {
+	if err := CollectBoards(client, "org", "proj-keep", nil); err != nil {
 		t.Fatalf("unexpected error on first collect: %v", err)
 	}
 	server.Close()
 
-	if err := CollectBoards(client, "org", "proj-keep"); err == nil {
+	if err := CollectBoards(client, "org", "proj-keep", nil); err == nil {
 		t.Fatal("expected error when server is unreachable")
 	}
 	if got := gaugeValue(t, metrics.BoardsWorkItemsTotal, "org", "proj-keep"); got != 5 {

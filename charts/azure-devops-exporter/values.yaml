@@ -22,6 +22,12 @@ azureDevOps:
   # AZURE_DEVOPS_TOKEN key — the chart won't create its own Secret in that case, and
   # azureDevOps.token above is ignored.
   existingSecret: ""
+  # Optional: break azure_devops_boards_work_items_by_custom_field_total down by
+  # project-specific work item fields (reference names, not display names), each
+  # optionally followed by ":label" — e.g. "Custom.Platform:platform,Custom.Squad" —
+  # see README's "Custom fields (Boards)" section. Omitted from the ConfigMap entirely
+  # when left empty.
+  boardsCustomFields: ""
 
 exporter:
   port: 8080
