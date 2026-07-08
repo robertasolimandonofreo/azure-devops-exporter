@@ -725,6 +725,159 @@
           "legendFormat": "P{{priority}} — {{work_item_type}}"
         }
       ]
+    },
+    {
+      "id": 25,
+      "type": "row",
+      "title": "Sprint — WIP & Flow",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 }
+    },
+    {
+      "id": 26,
+      "type": "gauge",
+      "title": "WIP — In Progress (limit: 5)",
+      "description": "Work items currently In Progress. Board limit is 5 — exceeding it signals a flow bottleneck.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 59 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "minVizWidth": 75,
+        "minVizHeight": 75
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 10,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 4 },
+              { "color": "red", "value": 6 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", state=\"In Progress\"})",
+          "instant": true,
+          "legendFormat": "In Progress"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "gauge",
+      "title": "Flow efficiency (%)",
+      "description": "Percentage of sprint items in an active state (In Progress + In Review) vs total open items. Higher = less queuing.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 59 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "minVizWidth": 75,
+        "minVizHeight": 75
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 20 },
+              { "color": "green", "value": 40 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "100 * sum(azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", state=~\"In Progress|In Review\"}) / sum(azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", state!~\"Done\"})",
+          "instant": true,
+          "legendFormat": "Flow efficiency"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "row",
+      "title": "Sprint — Custom Fields (Labels & Platform)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 65 }
+    },
+    {
+      "id": 29,
+      "type": "bargauge",
+      "title": "Items by label (sprint)",
+      "description": "Work item count per EDP label (Custom.EDPLabels). Requires boardsCustomFields=Custom.EDPLabels:labels in the exporter config.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 66 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "semi-dark-blue", "value": 5 },
+              { "color": "dark-blue", "value": 10 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sort_desc(sum by (value) (azure_devops_boards_work_items_by_custom_field_total{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", field=\"labels\", value!=\"unset\"}))",
+          "instant": true,
+          "legendFormat": "{{value}}"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "piechart",
+      "title": "Items by platform (sprint)",
+      "description": "Work item count per EDP platform (Custom.EDPPlataform). Requires boardsCustomFields=Custom.EDPPlataform:platform in the exporter config.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 66 },
+      "options": {
+        "pieType": "donut",
+        "displayLabels": ["name", "value"],
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }
+      },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (value) (azure_devops_boards_work_items_by_custom_field_total{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", field=\"platform\", value!=\"unset\", value!=\"none\"})",
+          "instant": true,
+          "legendFormat": "{{value}}"
+        }
+      ]
     }
   ]
 }
