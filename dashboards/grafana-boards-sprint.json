@@ -225,7 +225,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(azure_devops_boards_work_items_blocked_total{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "sum(azure_devops_boards_work_items_blocked_total{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "Blocked"
         }
@@ -254,7 +254,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (state) (azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "sum by (state) (azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "{{state}}"
         }
@@ -276,7 +276,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (work_item_type) (azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "sum by (work_item_type) (azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "{{work_item_type}}"
         }
@@ -313,7 +313,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (assigned_to) (azure_devops_boards_work_items_by_assignee{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "sum by (assigned_to) (azure_devops_boards_work_items_by_assignee{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "{{assigned_to}}"
         }
@@ -353,7 +353,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (state) (azure_devops_boards_story_points_total{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "sum by (state) (azure_devops_boards_story_points_total{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "{{state}}"
         }
@@ -386,7 +386,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (state) (azure_devops_boards_effort_total{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "sum by (state) (azure_devops_boards_effort_total{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "{{state}}"
         }
@@ -425,19 +425,19 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "avg by (work_item_type) (azure_devops_boards_lead_time_avg_days{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "avg by (work_item_type) (azure_devops_boards_lead_time_avg_days{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "Avg — {{work_item_type}}"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "avg by (work_item_type) (azure_devops_boards_lead_time_p50_days{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "avg by (work_item_type) (azure_devops_boards_lead_time_p50_days{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "p50 — {{work_item_type}}"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "avg by (work_item_type) (azure_devops_boards_lead_time_p90_days{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "avg by (work_item_type) (azure_devops_boards_lead_time_p90_days{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "p90 — {{work_item_type}}"
         }
@@ -561,7 +561,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (severity) (azure_devops_boards_bugs_by_severity{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "sum by (severity) (azure_devops_boards_bugs_by_severity{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "{{severity}}"
         }
@@ -598,7 +598,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (work_item_type) (azure_devops_boards_work_items_stale_total{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "sum by (work_item_type) (azure_devops_boards_work_items_stale_total{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "{{work_item_type}}"
         }
@@ -635,7 +635,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (work_item_type) (azure_devops_boards_work_items_without_estimate_total{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "sum by (work_item_type) (azure_devops_boards_work_items_without_estimate_total{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "{{work_item_type}}"
         }
@@ -683,7 +683,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "azure_devops_boards_work_item_age_days{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"}",
+          "expr": "azure_devops_boards_work_item_age_days{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"}",
           "instant": true,
           "legendFormat": "{{work_item_id}} — {{work_item_type}} — {{state}} — {{assigned_to}}"
         }
@@ -720,7 +720,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (priority, work_item_type) (azure_devops_boards_work_items_by_priority{organization=~\"$organization\", project=~\"$project\", iteration_path=~\"$sprint\"})",
+          "expr": "sum by (priority, work_item_type) (azure_devops_boards_work_items_by_priority{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
           "instant": true,
           "legendFormat": "P{{priority}} — {{work_item_type}}"
         }

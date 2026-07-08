@@ -292,37 +292,57 @@ func collectActiveSprint(client *azuredevops.Client, organization, project strin
 }
 
 // collectSprintHistory sets the sprint velocity and delivery metrics for a team's last
-// velocitySprintCount past sprints (fewer if the team doesn't have that many), one series per
-// iteration, from a single fetch of each iteration's work items — delivery status is a
+// velocitySprintCount sprints (past + current, fewer if the team doesn't have that many), one
+// series per iteration, from a single fetch of each iteration's work items — delivery status is a
 // by-product of the same data velocity already needs, so this costs no extra API calls beyond
 // what velocity alone would.
 //
+// The current (active) sprint is included so teams can track in-progress velocity without waiting
+// for the sprint to end. Delivery status (on_time / late / not_delivered) is only emitted for
+// iterations whose FinishDate is in the past — classifying an in-progress sprint as "not
+// delivered" would be misleading, so delivery metrics are skipped for it.
+//
 // Velocity only counts work items whose current state is terminal — an item still open past its
-// sprint's end isn't "completed work" for that sprint, even though it's still associated with
-// it. Delivery status classifies every item in the sprint's backlog three ways: "on_time" (closed
-// on or before the sprint's own end date — delivered as committed), "late" (closed, but after the
-// sprint ended), or "not_delivered" (never reached a terminal state at all, even though the
-// sprint is over). A terminal item with no ClosedDate recorded still counts toward velocity but
-// can't be classified as on_time or late (no date to compare), so it contributes to neither. If
-// the iteration itself has no FinishDate on record, delivery status is skipped entirely for it —
-// velocity is unaffected either way.
+// sprint's end isn't "completed work" for that sprint, even though it's still associated with it.
+// Delivery status classifies every item in a finished sprint's backlog three ways: "on_time"
+// (closed on or before the sprint's own end date), "late" (closed after), or "not_delivered"
+// (never reached a terminal state). A terminal item with no ClosedDate recorded still counts
+// toward velocity but can't be classified as on_time or late. If the iteration has no FinishDate
+// on record, delivery status is skipped entirely — velocity is unaffected either way.
 func collectSprintHistory(client *azuredevops.Client, organization, project string, team azuredevops.Team, itemByID map[int]azuredevops.WorkItem) {
-	pastIterations, err := client.ListTeamIterations(project, team.Name, "past")
-	if err != nil || len(pastIterations) == 0 {
+	// Fetch past + current iterations together so the current sprint appears in velocity charts.
+	// ListTeamIterations with an empty timeframe returns everything; we exclude future sprints.
+	allIterations, err := client.ListTeamIterations(project, team.Name, "")
+	if err != nil {
 		return
 	}
-	sort.Slice(pastIterations, func(i, j int) bool {
-		return pastIterations[i].Attributes.StartDate.Before(pastIterations[j].Attributes.StartDate)
+	var iterations []azuredevops.Iteration
+	for _, it := range allIterations {
+		if it.Attributes.TimeFrame == "past" || it.Attributes.TimeFrame == "current" {
+			iterations = append(iterations, it)
+		}
+	}
+	if len(iterations) == 0 {
+		return
+	}
+	sort.Slice(iterations, func(i, j int) bool {
+		return iterations[i].Attributes.StartDate.Before(iterations[j].Attributes.StartDate)
 	})
-	if len(pastIterations) > velocitySprintCount {
-		pastIterations = pastIterations[len(pastIterations)-velocitySprintCount:]
+	if len(iterations) > velocitySprintCount {
+		iterations = iterations[len(iterations)-velocitySprintCount:]
 	}
 
-	for _, iteration := range pastIterations {
+	now := time.Now()
+	for _, iteration := range iterations {
 		ids, err := client.ListIterationWorkItemIDs(project, team.Name, iteration.ID)
 		if err != nil {
 			continue
 		}
+
+		// sprintEnded is true only when the sprint's finish date has actually passed.
+		// The current sprint has a FinishDate but it's in the future, so delivery metrics
+		// would be meaningless (all items would show as "not_delivered" mid-sprint).
+		sprintEnded := !iteration.Attributes.FinishDate.IsZero() && !iteration.Attributes.FinishDate.After(now)
 
 		var points float64
 		var onTime, late, notDelivered int
@@ -332,11 +352,13 @@ func collectSprintHistory(client *azuredevops.Client, organization, project stri
 				continue
 			}
 			if !isTerminalState(item.Fields.State) {
-				notDelivered++
+				if sprintEnded {
+					notDelivered++
+				}
 				continue
 			}
 			points += pointsOf(item)
-			if item.Fields.ClosedDate.IsZero() || iteration.Attributes.FinishDate.IsZero() {
+			if item.Fields.ClosedDate.IsZero() || !sprintEnded {
 				continue
 			}
 			if !item.Fields.ClosedDate.After(iteration.Attributes.FinishDate) {
@@ -347,7 +369,7 @@ func collectSprintHistory(client *azuredevops.Client, organization, project stri
 		}
 		metrics.BoardsSprintVelocityStoryPoints.WithLabelValues(organization, project, team.Name, iteration.Name).Set(points)
 
-		if !iteration.Attributes.FinishDate.IsZero() {
+		if sprintEnded {
 			metrics.BoardsSprintDeliveryTotal.WithLabelValues(organization, project, team.Name, iteration.Name, "on_time").Set(float64(onTime))
 			metrics.BoardsSprintDeliveryTotal.WithLabelValues(organization, project, team.Name, iteration.Name, "late").Set(float64(late))
 			metrics.BoardsSprintDeliveryTotal.WithLabelValues(organization, project, team.Name, iteration.Name, "not_delivered").Set(float64(notDelivered))
