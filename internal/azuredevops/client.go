@@ -502,6 +502,9 @@ type WorkItem struct {
 	Fields struct {
 		WorkItemType  string    `json:"System.WorkItemType"`
 		State         string    `json:"System.State"`
+		// StateCategory is "Proposed", "InProgress", "Resolved", or "Removed".
+		// Used to filter out removed/canceled items in Go code (not usable in WIQL WHERE).
+		StateCategory string    `json:"System.StateCategory"`
 		AreaPath      string    `json:"System.AreaPath"`
 		IterationPath string    `json:"System.IterationPath"`
 		CreatedDate   time.Time `json:"System.CreatedDate"`
@@ -562,13 +565,11 @@ var closedStatesClause = func() string {
 // generic HTTP 400.
 const sinceYesterday = "@Today - 1"
 
-// QueryWorkItemIDs returns the IDs of all non-removed work items in a project.
-// We filter on [System.StateCategory] rather than [System.State] so that custom
-// process templates with non-standard "removed" state names (e.g. "Canceled" with
-// state_category = "Removed") are correctly excluded, not just the default "Removed"
-// state name used by the built-in Agile/Scrum/CMMI templates.
+// QueryWorkItemIDs returns the IDs of all work items in a project (including removed/canceled).
+// State-category filtering is done in Go after fetching full fields, because
+// [System.StateCategory] is not a valid WIQL WHERE field.
 func (c *Client) QueryWorkItemIDs(project string) ([]int, error) {
-	wiql := "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.StateCategory] <> 'Removed'"
+	wiql := "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project"
 	ids, err := c.queryWorkItemIDs(project, wiql)
 	if err != nil {
 		return nil, fmt.Errorf("query work items: %w", err)
@@ -630,7 +631,7 @@ func (c *Client) queryWorkItemIDs(project, wiql string) ([]int, error) {
 // fixedWorkItemFields are the fields GetWorkItems always requests, regardless of any
 // project-specific customFields passed in.
 var fixedWorkItemFields = []string{
-	"System.WorkItemType", "System.State", "System.AreaPath", "System.IterationPath",
+	"System.WorkItemType", "System.State", "System.StateCategory", "System.AreaPath", "System.IterationPath",
 	"System.CreatedDate", "System.ChangedDate", "Microsoft.VSTS.Common.ClosedDate",
 	"Microsoft.VSTS.Common.ActivatedDate",
 	"Microsoft.VSTS.Common.Priority", "Microsoft.VSTS.Common.Severity",
