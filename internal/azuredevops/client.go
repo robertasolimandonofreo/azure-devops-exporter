@@ -560,8 +560,12 @@ var closedStatesClause = func() string {
 const sinceYesterday = "@Today - 1"
 
 // QueryWorkItemIDs returns the IDs of all non-removed work items in a project.
+// We filter on [System.StateCategory] rather than [System.State] so that custom
+// process templates with non-standard "removed" state names (e.g. "Canceled" with
+// state_category = "Removed") are correctly excluded, not just the default "Removed"
+// state name used by the built-in Agile/Scrum/CMMI templates.
 func (c *Client) QueryWorkItemIDs(project string) ([]int, error) {
-	wiql := "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.State] <> 'Removed'"
+	wiql := "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.StateCategory] <> 'Removed'"
 	ids, err := c.queryWorkItemIDs(project, wiql)
 	if err != nil {
 		return nil, fmt.Errorf("query work items: %w", err)
