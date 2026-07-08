@@ -507,6 +507,9 @@ type WorkItem struct {
 		CreatedDate   time.Time `json:"System.CreatedDate"`
 		ChangedDate   time.Time `json:"System.ChangedDate"`
 		ClosedDate    time.Time `json:"Microsoft.VSTS.Common.ClosedDate"`
+		// ActivatedDate is set by Azure DevOps when a work item first transitions to an
+		// InProgress-category state. Used to compute cycle time (ActivatedDate → ClosedDate).
+		ActivatedDate time.Time `json:"Microsoft.VSTS.Common.ActivatedDate"`
 		// Priority is 0 when unset (valid Azure DevOps priorities start at 1).
 		Priority int `json:"Microsoft.VSTS.Common.Priority"`
 		// Severity is only populated on Bug work items in the built-in process templates.
@@ -560,8 +563,12 @@ var closedStatesClause = func() string {
 const sinceYesterday = "@Today - 1"
 
 // QueryWorkItemIDs returns the IDs of all non-removed work items in a project.
+// We filter on [System.StateCategory] rather than [System.State] so that custom
+// process templates with non-standard "removed" state names (e.g. "Canceled" with
+// state_category = "Removed") are correctly excluded, not just the default "Removed"
+// state name used by the built-in Agile/Scrum/CMMI templates.
 func (c *Client) QueryWorkItemIDs(project string) ([]int, error) {
-	wiql := "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.State] <> 'Removed'"
+	wiql := "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.StateCategory] <> 'Removed'"
 	ids, err := c.queryWorkItemIDs(project, wiql)
 	if err != nil {
 		return nil, fmt.Errorf("query work items: %w", err)
@@ -625,6 +632,7 @@ func (c *Client) queryWorkItemIDs(project, wiql string) ([]int, error) {
 var fixedWorkItemFields = []string{
 	"System.WorkItemType", "System.State", "System.AreaPath", "System.IterationPath",
 	"System.CreatedDate", "System.ChangedDate", "Microsoft.VSTS.Common.ClosedDate",
+	"Microsoft.VSTS.Common.ActivatedDate",
 	"Microsoft.VSTS.Common.Priority", "Microsoft.VSTS.Common.Severity",
 	"Microsoft.VSTS.Scheduling.StoryPoints", "Microsoft.VSTS.Scheduling.Effort",
 	"System.AssignedTo", "System.Tags",

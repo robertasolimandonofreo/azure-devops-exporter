@@ -725,6 +725,468 @@
           "legendFormat": "P{{priority}} — {{work_item_type}}"
         }
       ]
+    },
+    {
+      "id": 25,
+      "type": "row",
+      "title": "Sprint — Completion & Throughput",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 }
+    },
+    {
+      "id": 31,
+      "type": "gauge",
+      "title": "Sprint completion (%)",
+      "description": "Story points Done / total story points committed in the sprint.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 59 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 40 },
+              { "color": "green", "value": 70 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "100 * sum(azure_devops_boards_story_points_total{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", state=\"Done\"}) / sum(azure_devops_boards_story_points_total{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
+          "instant": true,
+          "legendFormat": "Completion %"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "barchart",
+      "title": "Throughput — items completed per sprint",
+      "description": "Number of work items (count) that reached a terminal state each sprint.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 10, "x": 6, "y": 59 },
+      "options": {
+        "xField": "iteration",
+        "orientation": "auto",
+        "groupWidth": 0.7,
+        "barWidth": 0.97,
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 1, "fillOpacity": 80 }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (team, iteration) (azure_devops_boards_sprint_throughput_items_total{organization=~\"$organization\", project=~\"$project\", team=~\"$team\"})",
+          "instant": true,
+          "legendFormat": "{{team}} — {{iteration}}"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "type": "barchart",
+      "title": "Scope added mid-sprint",
+      "description": "Items added to the sprint backlog after the sprint started (CreatedDate > sprint StartDate). Indicates scope creep.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 59 },
+      "options": {
+        "xField": "iteration",
+        "orientation": "auto",
+        "groupWidth": 0.7,
+        "barWidth": 0.97,
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 1, "fillOpacity": 80 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 3 },
+              { "color": "red", "value": 7 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (team, iteration) (azure_devops_boards_sprint_scope_added_total{organization=~\"$organization\", project=~\"$project\", team=~\"$team\"})",
+          "instant": true,
+          "legendFormat": "{{team}} — {{iteration}}"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "type": "barchart",
+      "title": "Average item age by state (sprint)",
+      "description": "Mean age in days of open items per state in the selected sprint. Highlights where items are queuing.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 65 },
+      "options": {
+        "xField": "state",
+        "orientation": "auto",
+        "groupWidth": 0.7,
+        "barWidth": 0.97,
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "custom": { "lineWidth": 1, "fillOpacity": 80 },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 7 },
+              { "color": "red", "value": 14 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "avg by (state) (azure_devops_boards_work_item_age_days{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", state!~\"Done\"})",
+          "instant": true,
+          "legendFormat": "{{state}}"
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "type": "bargauge",
+      "title": "Story points by assignee (sprint)",
+      "description": "Total story points allocated per person in the selected sprint.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 65 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 30 },
+              { "color": "red", "value": 60 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (assigned_to) (azure_devops_boards_work_item_story_points{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", assigned_to!=\"unassigned\"})",
+          "instant": true,
+          "legendFormat": "{{assigned_to}}"
+        }
+      ]
+    },
+    {
+      "id": 36,
+      "type": "row",
+      "title": "Sprint — Cycle Time",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 71 }
+    },
+    {
+      "id": 37,
+      "type": "barchart",
+      "title": "Cycle time by type (avg / p50 / p90 days) — sprint",
+      "description": "Cycle time = ActivatedDate → ClosedDate (time actively worked, not including time in Backlog/Todo). Only items where Microsoft.VSTS.Common.ActivatedDate was set contribute.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 72 },
+      "options": {
+        "xField": "work_item_type",
+        "orientation": "auto",
+        "groupWidth": 0.7,
+        "barWidth": 0.97,
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "custom": { "lineWidth": 1, "fillOpacity": 80 }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "avg by (work_item_type) (azure_devops_boards_cycle_time_avg_days{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
+          "instant": true,
+          "legendFormat": "Avg — {{work_item_type}}"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "avg by (work_item_type) (azure_devops_boards_cycle_time_p50_days{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
+          "instant": true,
+          "legendFormat": "p50 — {{work_item_type}}"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "avg by (work_item_type) (azure_devops_boards_cycle_time_p90_days{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
+          "instant": true,
+          "legendFormat": "p90 — {{work_item_type}}"
+        }
+      ]
+    },
+    {
+      "id": 38,
+      "type": "stat",
+      "title": "Items without sprint",
+      "description": "Work items with no iteration path set — not allocated to any sprint.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 72 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 15 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(azure_devops_boards_work_items_without_iteration_total{organization=~\"$organization\", project=~\"$project\"})",
+          "instant": true,
+          "legendFormat": "Without sprint"
+        }
+      ]
+    },
+    {
+      "id": 39,
+      "type": "stat",
+      "title": "Cycle time vs lead time delta (avg days)",
+      "description": "Difference between lead time (created→closed) and cycle time (activated→closed). Represents average time items spent waiting in Backlog/Todo before being worked on.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 76 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "auto",
+        "orientation": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 7 },
+              { "color": "red", "value": 20 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "avg(azure_devops_boards_lead_time_avg_days{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"}) - avg(azure_devops_boards_cycle_time_avg_days{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\"})",
+          "instant": true,
+          "legendFormat": "Wait time"
+        }
+      ]
+    },
+    {
+      "id": 40,
+      "type": "row",
+      "title": "Sprint — WIP & Flow",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 }
+    },
+    {
+      "id": 26,
+      "type": "gauge",
+      "title": "WIP — In Progress (limit: 5)",
+      "description": "Work items currently In Progress. Board limit is 5 — exceeding it signals a flow bottleneck.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 59 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "minVizWidth": 75,
+        "minVizHeight": 75
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 10,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 4 },
+              { "color": "red", "value": 6 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", state=\"In Progress\"})",
+          "instant": true,
+          "legendFormat": "In Progress"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "gauge",
+      "title": "Flow efficiency (%)",
+      "description": "Percentage of sprint items in an active state (In Progress + In Review) vs total open items. Higher = less queuing.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 59 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true,
+        "minVizWidth": 75,
+        "minVizHeight": 75
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 20 },
+              { "color": "green", "value": 40 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "100 * sum(azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", state=~\"In Progress|In Review\"}) / sum(azure_devops_boards_work_items_by_state{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", state!~\"Done\"})",
+          "instant": true,
+          "legendFormat": "Flow efficiency"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "row",
+      "title": "Sprint — Custom Fields (Labels & Platform)",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 65 }
+    },
+    {
+      "id": 29,
+      "type": "bargauge",
+      "title": "Items by label (sprint)",
+      "description": "Work item count per EDP label (Custom.EDPLabels). Requires boardsCustomFields=Custom.EDPLabels:labels in the exporter config.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 66 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "semi-dark-blue", "value": 5 },
+              { "color": "dark-blue", "value": 10 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sort_desc(sum by (value) (azure_devops_boards_work_items_by_custom_field_total{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", field=\"labels\", value!=\"unset\"}))",
+          "instant": true,
+          "legendFormat": "{{value}}"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "piechart",
+      "title": "Items by platform (sprint)",
+      "description": "Work item count per EDP platform (Custom.EDPPlataform). Requires boardsCustomFields=Custom.EDPPlataform:platform in the exporter config.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 66 },
+      "options": {
+        "pieType": "donut",
+        "displayLabels": ["name", "value"],
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }
+      },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (value) (azure_devops_boards_work_items_by_custom_field_total{organization=~\"$organization\", project=~\"$project\", iteration_path=\"$sprint\", field=\"platform\", value!=\"unset\", value!=\"none\"})",
+          "instant": true,
+          "legendFormat": "{{value}}"
+        }
+      ]
     }
   ]
 }
