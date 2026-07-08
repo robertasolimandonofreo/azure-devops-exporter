@@ -80,6 +80,12 @@ type Config struct {
 	// fixed set of fields every other Boards metric already uses. Applies to every project —
 	// there's no per-project custom field list, only the per-project collector selection above.
 	BoardsCustomFields []azuredevops.CustomField
+	// BoardsExcludeStates is a list of work item state names to exclude from all Boards metrics.
+	// Defaults to ["Removed"] (the standard "removed" state name in built-in Azure DevOps process
+	// templates). Add custom states such as "Canceled" for projects using a custom process template
+	// where the removed-category state has a different name.
+	// Set via AZURE_DEVOPS_BOARDS_EXCLUDE_STATES (comma-separated, e.g. "Removed,Canceled").
+	BoardsExcludeStates []string
 }
 
 // Load reads configuration from environment variables and validates required fields.
@@ -102,6 +108,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	cfg.BoardsCustomFields = customFields
+	cfg.BoardsExcludeStates = parseExcludeStates(os.Getenv("AZURE_DEVOPS_BOARDS_EXCLUDE_STATES"))
 
 	port, err := envIntOrDefault("EXPORTER_PORT", defaultPort)
 	if err != nil {
@@ -218,6 +225,24 @@ func parseCustomFields(raw string) ([]azuredevops.CustomField, error) {
 		fields = append(fields, azuredevops.CustomField{RefName: refName, Label: label})
 	}
 	return fields, nil
+}
+
+// parseExcludeStates parses AZURE_DEVOPS_BOARDS_EXCLUDE_STATES: a comma-separated list of work
+// item state names to exclude. Defaults to ["Removed"] when the env var is unset so that the
+// standard Azure DevOps "Removed" state is excluded out of the box.
+func parseExcludeStates(raw string) []string {
+	if raw == "" {
+		return []string{"Removed"}
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func envOrDefault(key, def string) string {

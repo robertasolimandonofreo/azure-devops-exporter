@@ -134,7 +134,7 @@ func TestQueryWorkItemIDs(t *testing.T) {
 	defer server.Close()
 
 	c := NewClient(server.URL, "org", "token")
-	ids, err := c.QueryWorkItemIDs("proj")
+	ids, err := c.QueryWorkItemIDs("proj", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

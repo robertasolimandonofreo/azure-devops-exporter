@@ -14,3 +14,6 @@ data:
   {{- if .Values.azureDevOps.boardsCustomFields }}
   AZURE_DEVOPS_BOARDS_CUSTOM_FIELDS: {{ .Values.azureDevOps.boardsCustomFields | quote }}
   {{- end }}
+  {{- if .Values.azureDevOps.boardsExcludeStates }}
+  AZURE_DEVOPS_BOARDS_EXCLUDE_STATES: {{ .Values.azureDevOps.boardsExcludeStates | quote }}
+  {{- end }}

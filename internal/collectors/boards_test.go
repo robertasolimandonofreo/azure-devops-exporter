@@ -166,7 +166,7 @@ func TestCollectBoards(t *testing.T) {
 
 	client := azuredevops.NewClient(server.URL, "org", "token")
 	customFields := []azuredevops.CustomField{{RefName: "Custom.Platform", Label: "platform"}}
-	if err := CollectBoards(client, "org", "proj", customFields); err != nil {
+	if err := CollectBoards(client, "org", "proj", customFields, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -454,7 +454,7 @@ func TestCollectBoards_CustomFieldMultiValue(t *testing.T) {
 
 	client := azuredevops.NewClient(server.URL, "org", "token")
 	customFields := []azuredevops.CustomField{{RefName: "Custom.Platform", Label: "platform"}}
-	if err := CollectBoards(client, "org", "proj-multivalue", customFields); err != nil {
+	if err := CollectBoards(client, "org", "proj-multivalue", customFields, nil); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -512,7 +512,7 @@ func TestCollectBoards_FallsBackWithoutCustomFieldsOn400(t *testing.T) {
 
 	client := azuredevops.NewClient(server.URL, "org", "token")
 	customFields := []azuredevops.CustomField{{RefName: "Custom.Bogus", Label: "bogus"}}
-	if err := CollectBoards(client, "org", "proj-fallback", customFields); err != nil {
+	if err := CollectBoards(client, "org", "proj-fallback", customFields, nil); err != nil {
 		t.Fatalf("expected CollectBoards to fall back and succeed, got error: %v", err)
 	}
 
@@ -524,12 +524,12 @@ func TestCollectBoards_FallsBackWithoutCustomFieldsOn400(t *testing.T) {
 func TestCollectBoards_KeepsPreviousMetricsOnError(t *testing.T) {
 	server := boardsFakeServer(t)
 	client := azuredevops.NewClient(server.URL, "org", "token")
-	if err := CollectBoards(client, "org", "proj-keep", nil); err != nil {
+	if err := CollectBoards(client, "org", "proj-keep", nil, nil); err != nil {
 		t.Fatalf("unexpected error on first collect: %v", err)
 	}
 	server.Close()
 
-	if err := CollectBoards(client, "org", "proj-keep", nil); err == nil {
+	if err := CollectBoards(client, "org", "proj-keep", nil, nil); err == nil {
 		t.Fatal("expected error when server is unreachable")
 	}
 	if got := gaugeValue(t, metrics.BoardsWorkItemsTotal, "org", "proj-keep"); got != 5 {
