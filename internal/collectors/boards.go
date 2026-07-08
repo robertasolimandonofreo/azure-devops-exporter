@@ -72,6 +72,7 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 	byAssignee := make(map[assigneeKey]int)
 	staleByType := make(map[stateKey]int)
 	leadTimesByKey := make(map[leadTimeKey][]float64)
+	cycleTimesByKey := make(map[leadTimeKey][]float64)
 	byPriority := make(map[priorityKey]int)
 	bugsBySeverity := make(map[severityKey]int)
 	withoutEstimate := make(map[typeStateKey]int)
@@ -100,8 +101,13 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 
 		if isTerminalState(f.State) && !f.ClosedDate.IsZero() && !f.CreatedDate.IsZero() {
 			k := leadTimeKey{f.WorkItemType, f.AreaPath, f.IterationPath}
-			days := f.ClosedDate.Sub(f.CreatedDate).Hours() / 24
-			leadTimesByKey[k] = append(leadTimesByKey[k], days)
+			leadTimesByKey[k] = append(leadTimesByKey[k], f.ClosedDate.Sub(f.CreatedDate).Hours()/24)
+			// Cycle time: time from first active state (ActivatedDate) to closed.
+			// Only recorded when Azure DevOps set ActivatedDate (requires the item to have
+			// passed through an InProgress-category state at least once).
+			if !f.ActivatedDate.IsZero() {
+				cycleTimesByKey[k] = append(cycleTimesByKey[k], f.ClosedDate.Sub(f.ActivatedDate).Hours()/24)
+			}
 		}
 
 		if f.Priority != 0 {
@@ -161,6 +167,9 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 	metrics.BoardsWorkItemsByCustomFieldTotal.DeletePartialMatch(labelFilter)
 	metrics.BoardsWorkItemStoryPoints.DeletePartialMatch(labelFilter)
 	metrics.BoardsWorkItemsBlockedTotal.DeletePartialMatch(labelFilter)
+	metrics.BoardsCycleTimeAvgDays.DeletePartialMatch(labelFilter)
+	metrics.BoardsCycleTimeP50Days.DeletePartialMatch(labelFilter)
+	metrics.BoardsCycleTimeP90Days.DeletePartialMatch(labelFilter)
 
 	metrics.BoardsWorkItemsTotal.WithLabelValues(organization, project).Set(float64(len(items)))
 	metrics.BoardsWorkItemsCreatedTotal.WithLabelValues(organization, project).Set(float64(created))
@@ -188,6 +197,13 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 		metrics.BoardsLeadTimeP50Days.WithLabelValues(labels...).Set(percentile(days, 0.5))
 		metrics.BoardsLeadTimeP90Days.WithLabelValues(labels...).Set(percentile(days, 0.9))
 		metrics.BoardsLeadTimeMaxDays.WithLabelValues(labels...).Set(days[len(days)-1])
+	}
+	for k, days := range cycleTimesByKey {
+		sort.Float64s(days)
+		labels := []string{organization, project, k.workItemType, k.areaPath, k.iterationPath}
+		metrics.BoardsCycleTimeAvgDays.WithLabelValues(labels...).Set(average(days))
+		metrics.BoardsCycleTimeP50Days.WithLabelValues(labels...).Set(percentile(days, 0.5))
+		metrics.BoardsCycleTimeP90Days.WithLabelValues(labels...).Set(percentile(days, 0.9))
 	}
 	for k, count := range byPriority {
 		metrics.BoardsWorkItemsByPriority.WithLabelValues(organization, project, k.workItemType, k.priority, k.areaPath, k.iterationPath).Set(float64(count))
@@ -240,6 +256,8 @@ func collectTeamMetrics(client *azuredevops.Client, organization, project string
 	metrics.BoardsTeamCapacityHoursPerDay.DeletePartialMatch(labelFilter)
 	metrics.BoardsSprintVelocityStoryPoints.DeletePartialMatch(labelFilter)
 	metrics.BoardsSprintDeliveryTotal.DeletePartialMatch(labelFilter)
+	metrics.BoardsSprintThroughputTotal.DeletePartialMatch(labelFilter)
+	metrics.BoardsSprintScopeAddedTotal.DeletePartialMatch(labelFilter)
 
 	teams, err := client.ListTeams(project)
 	if err != nil {
@@ -345,11 +363,16 @@ func collectSprintHistory(client *azuredevops.Client, organization, project stri
 		sprintEnded := !iteration.Attributes.FinishDate.IsZero() && !iteration.Attributes.FinishDate.After(now)
 
 		var points float64
+		var throughput, scopeAdded int
 		var onTime, late, notDelivered int
 		for _, id := range ids {
 			item, ok := itemByID[id]
 			if !ok {
 				continue
+			}
+			// Scope creep: item was created after the sprint started.
+			if !iteration.Attributes.StartDate.IsZero() && item.Fields.CreatedDate.After(iteration.Attributes.StartDate) {
+				scopeAdded++
 			}
 			if !isTerminalState(item.Fields.State) {
 				if sprintEnded {
@@ -357,6 +380,7 @@ func collectSprintHistory(client *azuredevops.Client, organization, project stri
 				}
 				continue
 			}
+			throughput++
 			points += pointsOf(item)
 			if item.Fields.ClosedDate.IsZero() || !sprintEnded {
 				continue
@@ -368,6 +392,8 @@ func collectSprintHistory(client *azuredevops.Client, organization, project stri
 			}
 		}
 		metrics.BoardsSprintVelocityStoryPoints.WithLabelValues(organization, project, team.Name, iteration.Name).Set(points)
+		metrics.BoardsSprintThroughputTotal.WithLabelValues(organization, project, team.Name, iteration.Name).Set(float64(throughput))
+		metrics.BoardsSprintScopeAddedTotal.WithLabelValues(organization, project, team.Name, iteration.Name).Set(float64(scopeAdded))
 
 		if sprintEnded {
 			metrics.BoardsSprintDeliveryTotal.WithLabelValues(organization, project, team.Name, iteration.Name, "on_time").Set(float64(onTime))

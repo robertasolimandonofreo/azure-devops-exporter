@@ -233,6 +233,33 @@ var (
 		Help: "Number of non-removed work items with a \"blocked\" tag (case-insensitive match against System.Tags), by type, state, area path and iteration path.",
 	}, []string{"organization", "project", "work_item_type", "state", "area_path", "iteration_path"})
 
+	cycleTimeLabels = []string{"organization", "project", "work_item_type", "area_path", "iteration_path"}
+
+	BoardsCycleTimeAvgDays = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_cycle_time_avg_days",
+		Help: "Average cycle time (ActivatedDate → ClosedDate) in days for closed work items. Only items where Microsoft.VSTS.Common.ActivatedDate is set contribute.",
+	}, cycleTimeLabels)
+
+	BoardsCycleTimeP50Days = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_cycle_time_p50_days",
+		Help: "Median cycle time (ActivatedDate → ClosedDate) in days for closed work items.",
+	}, cycleTimeLabels)
+
+	BoardsCycleTimeP90Days = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_cycle_time_p90_days",
+		Help: "90th-percentile cycle time (ActivatedDate → ClosedDate) in days for closed work items.",
+	}, cycleTimeLabels)
+
+	BoardsSprintThroughputTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_sprint_throughput_items_total",
+		Help: "Number of work items (count, not story points) that reached a terminal state during each sprint.",
+	}, []string{"organization", "project", "team", "iteration"})
+
+	BoardsSprintScopeAddedTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "azure_devops_boards_sprint_scope_added_total",
+		Help: "Number of work items added to the sprint backlog after the sprint started (CreatedDate > sprint StartDate). A proxy for mid-sprint scope creep.",
+	}, []string{"organization", "project", "team", "iteration"})
+
 	// Pipelines domain.
 	PipelinesTotal = promauto.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "azure_devops_pipelines_total",

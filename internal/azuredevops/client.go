@@ -507,6 +507,9 @@ type WorkItem struct {
 		CreatedDate   time.Time `json:"System.CreatedDate"`
 		ChangedDate   time.Time `json:"System.ChangedDate"`
 		ClosedDate    time.Time `json:"Microsoft.VSTS.Common.ClosedDate"`
+		// ActivatedDate is set by Azure DevOps when a work item first transitions to an
+		// InProgress-category state. Used to compute cycle time (ActivatedDate → ClosedDate).
+		ActivatedDate time.Time `json:"Microsoft.VSTS.Common.ActivatedDate"`
 		// Priority is 0 when unset (valid Azure DevOps priorities start at 1).
 		Priority int `json:"Microsoft.VSTS.Common.Priority"`
 		// Severity is only populated on Bug work items in the built-in process templates.
@@ -629,6 +632,7 @@ func (c *Client) queryWorkItemIDs(project, wiql string) ([]int, error) {
 var fixedWorkItemFields = []string{
 	"System.WorkItemType", "System.State", "System.AreaPath", "System.IterationPath",
 	"System.CreatedDate", "System.ChangedDate", "Microsoft.VSTS.Common.ClosedDate",
+	"Microsoft.VSTS.Common.ActivatedDate",
 	"Microsoft.VSTS.Common.Priority", "Microsoft.VSTS.Common.Severity",
 	"Microsoft.VSTS.Scheduling.StoryPoints", "Microsoft.VSTS.Scheduling.Effort",
 	"System.AssignedTo", "System.Tags",
