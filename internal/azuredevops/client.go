@@ -502,9 +502,6 @@ type WorkItem struct {
 	Fields struct {
 		WorkItemType  string    `json:"System.WorkItemType"`
 		State         string    `json:"System.State"`
-		// StateCategory is "Proposed", "InProgress", "Resolved", or "Removed".
-		// Used to filter out removed/canceled items in Go code (not usable in WIQL WHERE).
-		StateCategory string    `json:"System.StateCategory"`
 		AreaPath      string    `json:"System.AreaPath"`
 		IterationPath string    `json:"System.IterationPath"`
 		CreatedDate   time.Time `json:"System.CreatedDate"`
@@ -565,11 +562,18 @@ var closedStatesClause = func() string {
 // generic HTTP 400.
 const sinceYesterday = "@Today - 1"
 
-// QueryWorkItemIDs returns the IDs of all work items in a project (including removed/canceled).
-// State-category filtering is done in Go after fetching full fields, because
-// [System.StateCategory] is not a valid WIQL WHERE field.
-func (c *Client) QueryWorkItemIDs(project string) ([]int, error) {
+// QueryWorkItemIDs returns the IDs of work items in a project, excluding any whose [System.State]
+// is in excludeStates (e.g. ["Removed", "Canceled"]). Pass nil to fetch all items.
+// [System.StateCategory] is not a valid WIQL field, so we filter by state name instead.
+func (c *Client) QueryWorkItemIDs(project string, excludeStates []string) ([]int, error) {
 	wiql := "SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project"
+	if len(excludeStates) > 0 {
+		quoted := make([]string, len(excludeStates))
+		for i, s := range excludeStates {
+			quoted[i] = "'" + strings.ReplaceAll(s, "'", "''") + "'"
+		}
+		wiql += " AND [System.State] NOT IN (" + strings.Join(quoted, ", ") + ")"
+	}
 	ids, err := c.queryWorkItemIDs(project, wiql)
 	if err != nil {
 		return nil, fmt.Errorf("query work items: %w", err)
@@ -631,7 +635,7 @@ func (c *Client) queryWorkItemIDs(project, wiql string) ([]int, error) {
 // fixedWorkItemFields are the fields GetWorkItems always requests, regardless of any
 // project-specific customFields passed in.
 var fixedWorkItemFields = []string{
-	"System.WorkItemType", "System.State", "System.StateCategory", "System.AreaPath", "System.IterationPath",
+	"System.WorkItemType", "System.State", "System.AreaPath", "System.IterationPath",
 	"System.CreatedDate", "System.ChangedDate", "Microsoft.VSTS.Common.ClosedDate",
 	"Microsoft.VSTS.Common.ActivatedDate",
 	"Microsoft.VSTS.Common.Priority", "Microsoft.VSTS.Common.Severity",

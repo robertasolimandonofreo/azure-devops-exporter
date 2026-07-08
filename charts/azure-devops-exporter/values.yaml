@@ -35,6 +35,11 @@ azureDevOps:
   # see README's "Custom fields (Boards)" section. Omitted from the ConfigMap entirely
   # when left empty.
   boardsCustomFields: ""
+  # Work item state names to exclude from all Boards metrics (comma-separated).
+  # Defaults to "Removed" (the standard Azure DevOps removed-category state name).
+  # Add custom states here if your project uses a custom process template — e.g.
+  # "Removed,Canceled" for a project that has a "Canceled" state with category Removed.
+  boardsExcludeStates: ""
 
 exporter:
   port: 8080

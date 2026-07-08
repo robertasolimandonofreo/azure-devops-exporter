@@ -101,7 +101,7 @@ func scrapeAll(client *azuredevops.Client, cfg *config.Config) {
 	// so it's adapted to scrapeComponent's shared (client, organization, project) signature via
 	// this closure rather than changing that signature for every collector.
 	collectBoards := func(client *azuredevops.Client, organization, project string) error {
-		return collectors.CollectBoards(client, organization, project, cfg.BoardsCustomFields)
+		return collectors.CollectBoards(client, organization, project, cfg.BoardsCustomFields, cfg.BoardsExcludeStates)
 	}
 
 	for _, project := range cfg.Projects {

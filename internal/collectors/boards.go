@@ -29,8 +29,8 @@ const staleThreshold = 14 * 24 * time.Hour
 // (see azuredevops.CustomField and the README) — nil/empty if none are configured, in which
 // case azure_devops_boards_work_items_by_custom_field_total is simply never populated. On
 // error, previously collected metrics for this project are left untouched.
-func CollectBoards(client *azuredevops.Client, organization, project string, customFields []azuredevops.CustomField) error {
-	ids, err := client.QueryWorkItemIDs(project)
+func CollectBoards(client *azuredevops.Client, organization, project string, customFields []azuredevops.CustomField, excludeStates []string) error {
+	ids, err := client.QueryWorkItemIDs(project, excludeStates)
 	if err != nil {
 		return fmt.Errorf("query work items: %w", err)
 	}
@@ -85,11 +85,6 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 	now := time.Now()
 	for _, item := range items {
 		f := item.Fields
-		// Skip items in "Removed" state category (includes custom states like "Canceled"
-		// that have state_category = "Removed" in custom process templates).
-		if f.StateCategory == "Removed" {
-			continue
-		}
 		sKey := stateKey{f.WorkItemType, f.State, f.AreaPath, f.IterationPath}
 		tsKey := typeStateKey{f.WorkItemType, f.State, f.AreaPath, f.IterationPath}
 
@@ -189,9 +184,6 @@ func CollectBoards(client *azuredevops.Client, organization, project string, cus
 		metrics.BoardsWorkItemsStaleTotal.WithLabelValues(organization, project, k.workItemType, k.state, k.areaPath, k.iterationPath).Set(float64(count))
 	}
 	for _, item := range items {
-		if item.Fields.StateCategory == "Removed" {
-			continue
-		}
 		ageDays := now.Sub(item.Fields.CreatedDate).Hours() / 24
 		metrics.BoardsWorkItemAgeDays.WithLabelValues(organization, project, item.Fields.WorkItemType, item.Fields.State, assigneeOf(item), strconv.Itoa(item.ID), item.Fields.AreaPath, item.Fields.IterationPath).Set(ageDays)
 		if item.Fields.StoryPoints != nil {
